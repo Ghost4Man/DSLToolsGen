@@ -1,11 +1,11 @@
-﻿using System.CodeDom.Compiler;
-
-using DSLToolsGenerator.Models;
+﻿using DSLToolsGenerator.Models;
 
 namespace DSLToolsGenerator;
 
-public class CSharpModelWriter(IndentedTextWriter output) : CodeGeneratingModelVisitor(output)
+public class CSharpModelWriter : CodeGeneratingModelVisitor
 {
+    public CSharpModelWriter(TextWriter output) : base(output) { }
+
     string TypeName(string typeName, bool nullable) => typeName + (nullable ? "?" : "");
     string TypeName(NodeClassModel nodeClass, bool nullable) => TypeName(nodeClass.Name, nullable);
 
@@ -43,5 +43,30 @@ public class CSharpModelWriter(IndentedTextWriter output) : CodeGeneratingModelV
             """);
 
         VisitAll(astModel.NodeClasses, "");
+    }
+
+    /// <summary>
+    /// Creates a new <see cref="CSharpModelWriter"/> instance and uses it
+    /// to write the specified <paramref name="model"/> to a string of C# code.
+    /// </summary>
+    /// <param name="model">The codegen model to write to a string.</param>
+    /// <returns>A string with C# code representing the <paramref name="model"/>.</returns>
+    public static string ModelToString(IModel model)
+    {
+        var writer = new StringWriter();
+        var visitor = new CSharpModelWriter(writer);
+        visitor.Visit(model);
+        return writer.ToString();
+    }
+
+    public static string ModelToString(IEnumerable<IModel> models)
+        => ModelToString(models, (v, mm) => v.VisitAll(mm, separator: ""));
+
+    public static string ModelToString<TModel>(TModel model, Action<CSharpModelWriter, TModel> visitorAction)
+    {
+        var writer = new StringWriter();
+        var visitor = new CSharpModelWriter(writer);
+        visitorAction(visitor, model);
+        return writer.ToString();
     }
 }

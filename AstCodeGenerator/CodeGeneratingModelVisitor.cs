@@ -4,9 +4,9 @@ using DSLToolsGenerator.Models;
 
 namespace DSLToolsGenerator;
 
-public abstract class CodeGeneratingModelVisitor(IndentedTextWriter output) : IModelVisitor
+public abstract class CodeGeneratingModelVisitor(TextWriter output) : IModelVisitor
 {
-    protected IndentedTextWriter Output { get; } = output;
+    protected IndentedTextWriter Output { get; } = new IndentedTextWriter(output);
 
     public void Visit(IModel model) => model.Accept(this);
     public void Visit(PropertyModel model) => Visit((IModel)model);

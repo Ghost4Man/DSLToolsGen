@@ -1,5 +1,4 @@
-﻿using System.CodeDom.Compiler;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Antlr4Ast;
 
@@ -31,21 +30,6 @@ public partial class AstCodeGenerator
                 : null)
             .WhereNotNull()
             .ToDictionary(r => r.Literal.Text, r => r.Rule);
-    }
-
-    public string GenerateFullAstCode()
-    {
-        var writer = new StringWriter();
-        GenerateFullAstCode(writer);
-        return writer.ToString();
-    }
-
-    public void GenerateFullAstCode(TextWriter output)
-    {
-        var writer = new IndentedTextWriter(output);
-        var visitor = new CSharpModelWriter(writer);
-        IModel model = GenerateAstCodeModel();
-        visitor.Visit(model);
     }
 
     public AstCodeModel GenerateAstCodeModel()

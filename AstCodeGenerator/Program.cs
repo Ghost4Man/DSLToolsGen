@@ -55,13 +55,18 @@ Task<int> GenerateAstCodeFromGrammarFile(FileInfo grammarFile, FileInfo? outputF
     }
 
     var generator = new AstCodeGenerator(grammar);
+    var model = generator.GenerateAstCodeModel();
     if (outputFile != null)
     {
         using var sw = new StreamWriter(outputFile.FullName);
-        generator.GenerateFullAstCode(sw);
+        var modelWriter = new CSharpModelWriter(sw);
+        modelWriter.Visit(model);
     }
     else
-        generator.GenerateFullAstCode(Console.Out);
+    {
+        var modelWriter = new CSharpModelWriter(Console.Out);
+        modelWriter.Visit(model);
+    }
     return ExitCode(0);
 }
 

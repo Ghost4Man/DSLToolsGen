@@ -26,9 +26,9 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
             Output.Write(")");
         }
         Output.WriteLine($" : {nodeClass.BaseClass?.Name ?? "IAstNode"};");
-        Output.Indent++;
+        Output.Indent();
         VisitAll(nodeClass.Variants, "");
-        Output.Indent--;
+        Output.Unindent();
     }
 
     public override void Visit(AstCodeModel astModel)

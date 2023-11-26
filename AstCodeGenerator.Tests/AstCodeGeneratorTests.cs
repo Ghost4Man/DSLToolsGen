@@ -128,6 +128,60 @@ public class AstCodeGeneratorTests
     }
 
     [Fact]
+    public void given_1_rule_with_token_list_ー_generates_records_with_string_list_property_with_plural_name()
+    {
+        AstCodeGenerator g = GetGeneratorForGrammar($$"""
+            {{grammarProlog}}
+            importStmt : 'import' ID+ ;
+            """);
+        Assert.Equal("""
+            public partial record ImportStatement(IList<string> Identifiers) : IAstNode;
+            """,
+            ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
+    }
+
+    [Fact]
+    public void given_1_rule_with_comma_delimited_token_list_ー_generates_records_with_string_list_property_with_plural_name()
+    {
+        AstCodeGenerator g = GetGeneratorForGrammar($$"""
+            {{grammarProlog}}
+            importStmt : 'import' ID (',' ID)* ;
+            """);
+        Assert.Equal("""
+            public partial record ImportStatement(IList<string> Identifiers) : IAstNode;
+            """,
+            ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
+    }
+
+    [Fact]
+    public void given_1_rule_with_multiple_token_refs_with_same_label_ー_generates_records_with_string_list_property_with_plural_name()
+    {
+        AstCodeGenerator g = GetGeneratorForGrammar($$"""
+            {{grammarProlog}}
+            fnCall : 'call' '(' args+=ID ',' args+=ID ',' args+=ID ')' ;
+            """);
+        Assert.Equal("""
+            public partial record FunctionCall(IList<string> Arguments) : IAstNode;
+            """,
+            ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
+    }
+
+    [Fact]
+    public void given_rule_with_multiple_rule_refs_with_same_label_ー_generates_records_with_string_list_property_with_plural_name()
+    {
+        AstCodeGenerator g = GetGeneratorForGrammar($$"""
+            {{grammarProlog}}
+            fnCall : 'call' '(' args+=expr ',' args+=expr ',' args+=expr ')' ;
+            expr : ID ;
+            """);
+        Assert.Equal("""
+            public partial record FunctionCall(IList<Expression> Arguments) : IAstNode;
+            public partial record Expression(string Identifier) : IAstNode;
+            """,
+            ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
+    }
+
+    [Fact]
     public void given_simple_rules_with_unlabeled_rule_references_without_repetition_ー_generates_records_with_Node_reference_properties()
     {
         AstCodeGenerator g = GetGeneratorForGrammar($$"""

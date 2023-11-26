@@ -1,4 +1,5 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace DSLToolsGenerator;
 
@@ -7,7 +8,7 @@ public class IndentedTextWriter(TextWriter inner)
     public int CurrentIndentSize { get; set; }
     public int IndentSpaces { get; set; } = 4;
 
-    int column = 0;
+    internal int CurrentColumn { get; private set; }
 
     public IndentedTextWriter Indent()
     {
@@ -27,7 +28,7 @@ public class IndentedTextWriter(TextWriter inner)
         {
             inner.Write(' ');
         }
-        column += spaces;
+        CurrentColumn += spaces;
         return this;
     }
 
@@ -36,33 +37,37 @@ public class IndentedTextWriter(TextWriter inner)
         bool isFirstLine = true;
         foreach (ReadOnlySpan<char> line in chars.EnumerateLines())
         {
-            if (!isFirstLine || column == 0)
+            if (!isFirstLine || CurrentColumn == 0)
                 PrintSpaces(CurrentIndentSize);
             isFirstLine = false;
             inner.WriteLine(line);
-            column = 0;
+            CurrentColumn = 0;
         }
     }
 
     public void Write(ReadOnlySpan<char> chars)
     {
+        if (chars.Length == 0)
+            return;
+
         bool isFirstLine = true;
         foreach (ReadOnlySpan<char> line in chars.EnumerateLines())
         {
             if (!isFirstLine)
             {
                 inner.WriteLine();
-                column = 0;
+                CurrentColumn = 0;
                 if (line.Length > 0)
                     PrintSpaces(CurrentIndentSize);
             }
-            else if (column == 0)
+            else if (CurrentColumn == 0)
             {
-                PrintSpaces(CurrentIndentSize);
+                if (line.Length > 0)
+                    PrintSpaces(CurrentIndentSize);
             }
             isFirstLine = false;
             inner.Write(line);
-            column += line.Length;
+            CurrentColumn += line.Length;
         }
     }
 
@@ -70,7 +75,8 @@ public class IndentedTextWriter(TextWriter inner)
     {
         // the text was already written during the construction of the `interpHandler` argument
         _ = interpHandler;
-        WriteLine(""); // now just end the line
+        if (CurrentColumn != 0) // ensure any output after this WriteCode call starts on a new line
+            WriteLine("");
     }
 }
 
@@ -82,9 +88,29 @@ public ref struct AutoIndentStringHandler(IndentedTextWriter writer)
         : this(writer) { }
 
     int temporaryInterpolationIndentation;
+    bool temporaryNewlineDeduplication;
 
-    public void AppendLiteral(string s)
+    public void AppendLiteral(ReadOnlySpan<char> s)
     {
+        // If the previous call was a AppendFormatted and it ended with a newline
+        // and `s` begins with a newline, skip ("deduplicate") this newline
+        if (temporaryNewlineDeduplication)
+        {
+            s = s is ['\n', .. var rest] ? rest :
+                s is ['\r', '\n', .. var rest2] ? rest2 :
+                s;
+            temporaryNewlineDeduplication = false;
+        }
+
+        var lastLine = GetLastLine(s);
+        temporaryInterpolationIndentation = lastLine.Length - lastLine.TrimStart().Length;
+
+        // if the last line is indentation-only, don't print it immediately, just set the indent
+        if (lastLine.IsWhiteSpace())
+        {
+            s = s[..^temporaryInterpolationIndentation]; // trim the indentation characters
+        }
+
         writer.Write(s);
 
         // Detect what indentation should be applied inside interpolations (AppendFormatted)
@@ -96,8 +122,6 @@ public ref struct AutoIndentStringHandler(IndentedTextWriter writer)
         //       {{someMultilineString}}
         //   unindented again
         //   """
-        var lastLine = GetLastLine(s);
-        temporaryInterpolationIndentation = lastLine.Length - lastLine.TrimStart().Length;
         writer.CurrentIndentSize += temporaryInterpolationIndentation;
     }
 
@@ -108,9 +132,43 @@ public ref struct AutoIndentStringHandler(IndentedTextWriter writer)
         return text[(newLineIndex + 1)..];
     }
 
-    public void AppendFormatted<T>(T t)
+    /// <summary>
+    /// Simply invokes the provided action. Useful for invoking void-returning
+    /// code generation methods form inside string interpolation.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// $$"""
+    /// class Example
+    /// {
+    ///     {{w => gen.GenerateProlog(w, "Example")}}
+    ///
+    ///     {{gen.GenerateClassBody}}
+    /// }
+    /// """
+    /// </code>
+    /// </example>
+    public void AppendFormatted(Action<IndentedTextWriter> embeddedAction)
     {
-        writer.Write(t?.ToString());
+        embeddedAction?.Invoke(writer);
         writer.CurrentIndentSize -= temporaryInterpolationIndentation;
+        temporaryInterpolationIndentation = 0;
+        temporaryNewlineDeduplication = writer.CurrentColumn == 0;
+    }
+
+    public void AppendFormatted(ReadOnlySpan<char> str)
+    {
+        writer.Write(str);
+        writer.CurrentIndentSize -= temporaryInterpolationIndentation;
+        temporaryInterpolationIndentation = 0;
+        temporaryNewlineDeduplication = writer.CurrentColumn == 0;
+    }
+
+    public void AppendFormatted<T>(T number) where T : INumber<T>
+    {
+        writer.Write(number?.ToString());
+        writer.CurrentIndentSize -= temporaryInterpolationIndentation;
+        temporaryInterpolationIndentation = 0;
+        temporaryNewlineDeduplication = writer.CurrentColumn == 0;
     }
 }

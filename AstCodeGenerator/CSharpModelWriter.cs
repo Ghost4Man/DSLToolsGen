@@ -18,41 +18,48 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
     public override void Visit(NodeClassModel nodeClass)
     {
         string @abstract = nodeClass.Variants.Count > 0 ? "abstract " : "";
-        Output.Write($"public {@abstract}partial record {nodeClass.Name}");
-        if (nodeClass.Properties.Count > 0)
+
+        Output.WriteCode($"""
+            public {@abstract}partial record {nodeClass.Name}{
+                    _ => generateRecordParameterList()} : {
+                    nodeClass.BaseClass?.Name ?? "IAstNode"};
+                {_ => VisitAll(nodeClass.Variants, "")}
+            """);
+
+        void generateRecordParameterList()
         {
-            Output.Write("(");
-            VisitAll(nodeClass.Properties, separator: ", ");
-            Output.Write(")");
+            if (nodeClass.Properties.Count > 0)
+            {
+                Output.Write("(");
+                VisitAll(nodeClass.Properties, separator: ", ");
+                Output.Write(")");
+            }
         }
-        Output.WriteLine($" : {nodeClass.BaseClass?.Name ?? "IAstNode"};");
-        Output.Indent();
-        VisitAll(nodeClass.Variants, "");
-        Output.Unindent();
     }
 
     public override void Visit(AstCodeModel astModel)
     {
-        Output.WriteLine("""
+        Output.WriteCode($$"""
             #nullable enable
             using System;
             using System.Collections.Generic;
 
             public partial interface IAstNode { }
 
+            {{_ => VisitAll(astModel.NodeClasses, "")}}
+
+            {{_ => Visit(astModel.AstBuilder)}}
             """);
-
-        VisitAll(astModel.NodeClasses, "");
-
-        Visit(astModel.AstBuilder);
     }
 
     public override void Visit(AstBuilderModel astBuilderModel)
     {
-        WriteBlock($"public class AstBuilder : {astBuilderModel.AntlrGrammarName}BaseVisitor<IAstNode>", () => {
-            foreach (var astMapping in astBuilderModel.AstMapping)
-                visit(astMapping);
-        });
+        Output.WriteCode($$"""
+            public class AstBuilder : {{astBuilderModel.AntlrGrammarName}}BaseVisitor<IAstNode>
+            {
+                {{_ => VisitAll(astBuilderModel.AstMapping, "\n", visit)}}
+            }
+            """);
 
         void visit(AstMappingModel astMapping)
         {
@@ -82,16 +89,6 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
         NodeReferenceListPropertyModel(_, var nodeClass) =>
             $"VisitAll(context.{nodeClass.ParserRule.Name}())",
     };
-
-    void WriteBlock(string prolog, Action body)
-    {
-        Output.WriteCode($$"""
-            {{prolog}}
-            {
-                {{body.InvokeAndReturn("")}}
-            }
-            """);
-    }
 
     /// <summary>
     /// Creates a new <see cref="CSharpModelWriter"/> instance and uses it

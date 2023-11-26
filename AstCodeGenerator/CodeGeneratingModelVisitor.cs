@@ -9,17 +9,23 @@ public abstract class CodeGeneratingModelVisitor(TextWriter output) : IModelVisi
     public void Visit(IModel model) => model.Accept(this);
     public void Visit(PropertyModel model) => Visit((IModel)model);
 
-    public void VisitAll(IEnumerable<IModel> models, Action? separatorAction)
+    public void VisitAll<TModel>(IEnumerable<TModel> models, Action? separatorAction, Action<TModel> visitAction)
     {
         bool first = true;
-        foreach (IModel model in models)
+        foreach (TModel model in models)
         {
             if (!first)
                 separatorAction?.Invoke();
-            Visit(model);
+            visitAction(model);
             first = false;
         }
     }
+
+    public void VisitAll<TModel>(IEnumerable<TModel> models, string separator, Action<TModel> visitAction)
+        => VisitAll(models, () => Output.Write(separator), visitAction);
+
+    public void VisitAll(IEnumerable<IModel> models, Action? separatorAction)
+        => VisitAll(models, separatorAction, Visit);
 
     public void VisitAll(IEnumerable<IModel> models, string separator)
         => VisitAll(models, () => Output.Write(separator));

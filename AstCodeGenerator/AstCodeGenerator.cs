@@ -35,7 +35,15 @@ public partial class AstCodeGenerator
     public AstCodeModel GenerateAstCodeModel()
     {
         var nodeClasses = grammar.ParserRules.Select(FindOrGenerateAstNodeClass);
-        return new AstCodeModel(nodeClasses.ToList());
+        var astBuilder = new AstBuilderModel(grammar.Name, getParserClassNameFromGrammar(grammar),
+            nodeClasses.Select(nc => new AstMappingModel(nc.ParserRule, nc)).ToList());
+        return new AstCodeModel(nodeClasses.ToList(), astBuilder);
+
+        static string getParserClassNameFromGrammar(Grammar grammar)
+            // TODO: check if this is actually how ANTLR computes the name
+            => grammar.Kind == GrammarKind.Full
+                ? grammar.Name + "Parser"
+                : grammar.Name;
     }
 
     NodeClassModel FindOrGenerateAstNodeClass(Rule parserRule)

@@ -43,6 +43,54 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
             """);
 
         VisitAll(astModel.NodeClasses, "");
+
+        Visit(astModel.AstBuilder);
+    }
+
+    public override void Visit(AstBuilderModel astBuilderModel)
+    {
+        WriteBlock($"public class AstBuilder : {astBuilderModel.AntlrGrammarName}BaseVisitor<IAstNode>", () => {
+            foreach (var astMapping in astBuilderModel.AstMapping)
+                visit(astMapping);
+        });
+
+        void visit(AstMappingModel astMapping)
+        {
+            var (rule, astClass) = astMapping;
+            Output.WriteCode($$"""
+                public override {{astClass.Name}} Visit{{rule.Name.Capitalize()}}({{
+                    astBuilderModel.GetRuleContextClassName(rule)}} context)
+                {
+                    {{astClass.Properties.MakeString("\n", p =>
+                        $"var {p.Name} = {GetCodeForExtractingValueFromParseTree(p)};")}}
+                    return new {{astClass.Name}}({{astClass.Properties.MakeString(", ", p => p.Name)}});
+                }
+                """);
+        }
+    }
+
+    // assumes the parse tree context object is available in a `context` variable
+    string GetCodeForExtractingValueFromParseTree(PropertyModel property) => property switch {
+        TokenTextPropertyModel(_, var token, var opt) =>
+            $"context.{token.Name}(){(opt ? "?" : "")}.GetText()",
+        TokenTextListPropertyModel(_, var token) =>
+            $"Array.ConvertAll(context.{token.Name}(), t => t.GetText())",
+        OptionalTokenPropertyModel(_, var token) =>
+            $"context.{token.Name}() != null",
+        NodeReferencePropertyModel(_, var nodeClass, var opt) =>
+            $"Visit(context.{nodeClass.ParserRule.Name}())",
+        NodeReferenceListPropertyModel(_, var nodeClass) =>
+            $"VisitAll(context.{nodeClass.ParserRule.Name}())",
+    };
+
+    void WriteBlock(string prolog, Action body)
+    {
+        Output.WriteCode($$"""
+            {{prolog}}
+            {
+                {{body.InvokeAndReturn("")}}
+            }
+            """);
     }
 
     /// <summary>

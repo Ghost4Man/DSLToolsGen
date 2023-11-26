@@ -31,4 +31,5 @@ public abstract class CodeGeneratingModelVisitor(TextWriter output) : IModelVisi
     public abstract void Visit(NodeReferenceListPropertyModel value);
     public abstract void Visit(TokenTextPropertyModel value);
     public abstract void Visit(TokenTextListPropertyModel value);
+    public abstract void Visit(AstBuilderModel value);
 }

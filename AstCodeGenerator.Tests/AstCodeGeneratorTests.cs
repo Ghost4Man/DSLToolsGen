@@ -29,7 +29,7 @@ public class AstCodeGeneratorTests
      */
 
     [Fact]
-    public void given_1_empty_rule_ー_generates_prolog_and_empty_record()
+    public void given_1_empty_rule_ー_generates_prolog_and_empty_record_and_ASTBuilder()
     {
         AstCodeGenerator g = GetGeneratorForGrammar($$"""
             {{grammarProlog}}
@@ -38,6 +38,14 @@ public class AstCodeGeneratorTests
         Assert.Equal($$"""
             {{expectedProlog}}
             public partial record Break : IAstNode;
+
+            public class AstBuilder : TestGrammarBaseVisitor<IAstNode>
+            {
+                public override Break VisitBreak(TestGrammarParser.BreakContext context)
+                {
+                    return new Break();
+                }
+            }
             """,
             ModelToString(g.GenerateAstCodeModel()).TrimEnd());
     }

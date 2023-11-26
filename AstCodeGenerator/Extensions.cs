@@ -41,4 +41,19 @@ static class EnumerableExtensions
                where item is not null
                select item;
     }
+
+    public static string MakeString<T>(this IEnumerable<T> items, string separator, Func<T, string> selector)
+    {
+        return string.Join(separator, items.Select(selector));
+    }
 }
+
+public static class ActionExtensions
+{
+    public static T InvokeAndReturn<T>(this Action action, T value)
+    {
+        action.Invoke();
+        return value;
+    }
+}
+

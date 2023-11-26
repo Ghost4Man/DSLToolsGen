@@ -161,7 +161,7 @@ public partial class AstCodeGenerator
             string elementName = element.Label ?? rule.Name;
             NodeClassModel nodeClass = FindOrGenerateAstNodeClass(rule);
             return element.IsMany()
-                ? new NodeReferenceListPropertyModel(ToPascalCase(MakeListName(ExpandAllAbbreviations(elementName))), nodeClass)
+                ? new NodeReferenceListPropertyModel(MakeListName(ToPascalCase(ExpandAllAbbreviations(elementName))), nodeClass)
                 : new NodeReferencePropertyModel(ToPascalCase(ExpandAllAbbreviations(elementName)), nodeClass, element.IsOptional());
         }
         else if (element is TokenRef tokenRef && IsTokenTextImportant(tokenRef))
@@ -169,7 +169,7 @@ public partial class AstCodeGenerator
             string elementName = tokenRef.Label ?? tokenRef.Name;
             ResolvedTokenRef resolvedTokenRef = Resolve(tokenRef);
             return tokenRef.IsMany()
-                ? new TokenTextListPropertyModel(ToPascalCase(MakeListName(ExpandAllAbbreviations(elementName))), resolvedTokenRef)
+                ? new TokenTextListPropertyModel(MakeListName(ToPascalCase(ExpandAllAbbreviations(elementName))), resolvedTokenRef)
                 : new TokenTextPropertyModel(ToPascalCase(ExpandAllAbbreviations(elementName)), resolvedTokenRef, element.IsOptional());
         }
         else if (element is TokenRef or Literal

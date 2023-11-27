@@ -77,18 +77,26 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
     }
 
     // assumes the parse tree context object is available in a `context` variable
-    string GetCodeForExtractingValueFromParseTree(PropertyModel property) => property switch {
-        TokenTextPropertyModel(_, var token, var opt) =>
-            $"context.{token.Name}(){(opt ? "?" : "")}.GetText()",
-        TokenTextListPropertyModel(_, var token) =>
-            $"Array.ConvertAll(context.{token.Name}(), t => t.GetText())",
-        OptionalTokenPropertyModel(_, var token) =>
-            $"context.{token.Name}() != null",
-        NodeReferencePropertyModel(_, var nodeClass, var opt) =>
-            $"Visit(context.{nodeClass.ParserRule.Name}())",
-        NodeReferenceListPropertyModel(_, var nodeClass) =>
-            $"VisitAll(context.{nodeClass.ParserRule.Name}())",
-    };
+    string GetCodeForExtractingValueFromParseTree(PropertyModel property)
+    {
+        return property switch {
+            TokenTextPropertyModel(_, var label, var token, var opt) =>
+                $"context.{tokenAccessor(label, token)}{(opt ? "?" : "")}.{tokenTextAccessor(label)}",
+            TokenTextListPropertyModel(_, var label, var token) =>
+                $"Array.ConvertAll(context.{tokenAccessor(label, token)}, t => t.{tokenTextAccessor(label)})",
+            OptionalTokenPropertyModel(_, var label, var token) =>
+                $"context.{tokenAccessor(label, token)} != null",
+            NodeReferencePropertyModel(_, var label, var nodeClass, var opt) =>
+                opt ? $"context.{ruleContextAccessor(label, nodeClass)}?.Accept(this)"
+                    : $"Visit(context.{ruleContextAccessor(label, nodeClass)})",
+            NodeReferenceListPropertyModel(_, var label, var nodeClass) =>
+                $"VisitAll(context.{ruleContextAccessor(label, nodeClass)})",
+        };
+
+        string tokenAccessor(string? label, ResolvedTokenRef token) => label ?? (token.Name + "()");
+        string tokenTextAccessor(string? label) => label != null ? "Text" : "GetText()";
+        string ruleContextAccessor(string? label, NodeClassModel nodeClass) => label ?? (nodeClass.ParserRule.Name + "()");
+    }
 
     /// <summary>
     /// Creates a new <see cref="CSharpModelWriter"/> instance and uses it

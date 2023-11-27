@@ -74,6 +74,87 @@ public class AstCodeGeneratorTests_Mapping
             ModelToString(g.GenerateAstCodeModel().AstBuilder).TrimEnd());
     }
 
+    [Fact]
+    public void given_1_rule_with_optional_labeled_ID_tokens_ー_gets_mapped_from_nullable_Text_of_labeled_tokens()
+    {
+        AstCodeGenerator g = GetGeneratorForGrammar($$"""
+            {{grammarProlog}}
+            stat : 'var' varName=ID? ('=' expr=ID)? ;
+            """);
+        Assert.Equal("""
+            public class AstBuilder : FooBaseVisitor<IAstNode>
+            {
+                public override Statement VisitStat(FooParser.StatContext context)
+                {
+                    var VariableName = context.varName?.Text;
+                    var Expression = context.expr?.Text;
+                    return new Statement(VariableName, Expression);
+                }
+            }
+            """,
+            ModelToString(g.GenerateAstCodeModel().AstBuilder).TrimEnd());
+    }
+
+    [Fact]
+    public void given_1_rule_with_rule_refs_ー_gets_mapped_from_rule_getter_methods()
+    {
+        AstCodeGenerator g = GetGeneratorForGrammar($$"""
+            {{grammarProlog}}
+            assignment : lvalue '=' expr ;
+            lvalue : expr '.' ID ;
+            expr : ID ;
+            """);
+        Assert.StartsWith("""
+            public class AstBuilder : FooBaseVisitor<IAstNode>
+            {
+                public override Assignment VisitAssignment(FooParser.AssignmentContext context)
+                {
+                    var Lvalue = Visit(context.lvalue());
+                    var Expression = Visit(context.expr());
+                    return new Assignment(Lvalue, Expression);
+                }
+
+                public override Lvalue VisitLvalue(FooParser.LvalueContext context)
+                {
+                    var Expression = Visit(context.expr());
+                    var Identifier = context.ID().GetText();
+                    return new Lvalue(Expression, Identifier);
+                }
+
+            """,
+            ModelToString(g.GenerateAstCodeModel().AstBuilder).TrimEnd());
+    }
+
+    [Fact]
+    public void given_1_rule_with_optional_rule_refs_ー_gets_mapped_from_nullable_rule_getter_methods()
+    {
+        AstCodeGenerator g = GetGeneratorForGrammar($$"""
+            {{grammarProlog}}
+            assignment : lvalue '=' expr? ;
+            lvalue : (expr '.')? ID ;
+            expr : ID ;
+            """);
+        Assert.StartsWith("""
+            public class AstBuilder : FooBaseVisitor<IAstNode>
+            {
+                public override Assignment VisitAssignment(FooParser.AssignmentContext context)
+                {
+                    var Lvalue = context.lvalue()?.Accept(this);
+                    var Expression = Visit(context.expr());
+                    return new Assignment(Lvalue, Expression);
+                }
+
+                public override Lvalue VisitLvalue(FooParser.LvalueContext context)
+                {
+                    var Expression = context.expr()?.Accept(this);
+                    var Identifier = context.ID().GetText();
+                    return new Lvalue(Expression, Identifier);
+                }
+
+            """,
+            ModelToString(g.GenerateAstCodeModel().AstBuilder).TrimEnd());
+    }
+
     AstCodeGenerator GetGeneratorForGrammar(string grammarCode)
     {
         var grammar = Antlr4Ast.Grammar.Parse(grammarCode);

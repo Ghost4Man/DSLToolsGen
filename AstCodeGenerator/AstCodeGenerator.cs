@@ -169,16 +169,16 @@ public partial class AstCodeGenerator
             string elementName = element.Label ?? rule.Name;
             NodeClassModel nodeClass = FindOrGenerateAstNodeClass(rule);
             return element.IsMany()
-                ? new NodeReferenceListPropertyModel(MakeListName(ToPascalCase(ExpandAllAbbreviations(elementName))), nodeClass)
-                : new NodeReferencePropertyModel(ToPascalCase(ExpandAllAbbreviations(elementName)), nodeClass, element.IsOptional());
+                ? new NodeReferenceListPropertyModel(MakeListName(ToPascalCase(ExpandAllAbbreviations(elementName))), element.Label, nodeClass)
+                : new NodeReferencePropertyModel(ToPascalCase(ExpandAllAbbreviations(elementName)), element.Label, nodeClass, element.IsOptional());
         }
         else if (element is TokenRef tokenRef && IsTokenTextImportant(tokenRef))
         {
             string elementName = tokenRef.Label ?? tokenRef.Name;
             ResolvedTokenRef resolvedTokenRef = Resolve(tokenRef);
             return tokenRef.IsMany()
-                ? new TokenTextListPropertyModel(MakeListName(ToPascalCase(ExpandAllAbbreviations(elementName))), resolvedTokenRef)
-                : new TokenTextPropertyModel(ToPascalCase(ExpandAllAbbreviations(elementName)), resolvedTokenRef, element.IsOptional());
+                ? new TokenTextListPropertyModel(MakeListName(ToPascalCase(ExpandAllAbbreviations(elementName))), element.Label, resolvedTokenRef)
+                : new TokenTextPropertyModel(ToPascalCase(ExpandAllAbbreviations(elementName)), element.Label, resolvedTokenRef, element.IsOptional());
         }
         else if (element is TokenRef or Literal
             && element.IsOptional()
@@ -192,6 +192,7 @@ public partial class AstCodeGenerator
             Debug.Assert(resolvedToken != null); // TODO: what about implicit tokens in combined grammars?
             return new OptionalTokenPropertyModel(
                 Name: name.StartsWithAny("Is", "Has", "Does", "Do", "Should", "Can", "Will") ? name : $"Is{name}",
+                Label: label,
                 Token: resolvedToken
             );
         }

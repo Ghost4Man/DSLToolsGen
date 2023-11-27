@@ -16,22 +16,27 @@ public partial interface IModelVisitor<in TArg>;
 public partial record AstCodeModel(IList<NodeClassModel> NodeClasses, AstBuilderModel AstBuilder) : IModel;
 
 [Acceptor<IModel>]
-public abstract partial record PropertyModel(string Name) : IModel;
+public abstract partial record PropertyModel(string Name, string? Label) : IModel;
 
 [Acceptor<IModel>]
-public partial record NodeReferencePropertyModel(string Name, NodeClassModel NodeClass, bool Optional) : PropertyModel(Name);
+public partial record NodeReferencePropertyModel(string Name, string? Label,
+    NodeClassModel NodeClass, bool Optional) : PropertyModel(Name, Label);
 
 [Acceptor<IModel>]
-public partial record NodeReferenceListPropertyModel(string Name, NodeClassModel NodeClass) : PropertyModel(Name);
+public partial record NodeReferenceListPropertyModel(string Name, string? Label,
+    NodeClassModel NodeClass) : PropertyModel(Name, Label);
 
 [Acceptor<IModel>]
-public partial record TokenTextPropertyModel(string Name, ResolvedTokenRef Token, bool Optional) : PropertyModel(Name);
+public partial record TokenTextPropertyModel(string Name, string? Label,
+    ResolvedTokenRef Token, bool Optional) : PropertyModel(Name, Label);
 
 [Acceptor<IModel>]
-public partial record TokenTextListPropertyModel(string Name, ResolvedTokenRef Token) : PropertyModel(Name);
+public partial record TokenTextListPropertyModel(string Name, string? Label,
+    ResolvedTokenRef Token) : PropertyModel(Name, Label);
 
 [Acceptor<IModel>]
-public partial record OptionalTokenPropertyModel(string Name, ResolvedTokenRef Token) : PropertyModel(Name);
+public partial record OptionalTokenPropertyModel(string Name, string? Label,
+    ResolvedTokenRef Token) : PropertyModel(Name, Label);
 
 [Acceptor<IModel>]
 public partial record NodeClassModel(string Name, Rule ParserRule, IList<PropertyModel> Properties) : IModel

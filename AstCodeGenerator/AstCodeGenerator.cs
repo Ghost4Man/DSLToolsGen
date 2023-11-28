@@ -135,6 +135,7 @@ public partial class AstCodeGenerator
             "num" => "number",
             "chr" or "char" => "character",
             "id" or "ident" => "identifier",
+            "kw" => "keyword",
             "asgt" or "asmt" or "asnmt" or "asgmt" or "asst" or "assig" or "asgn" => "assignment",
             "cond" => "condition",
             "cmd" => "command",
@@ -144,9 +145,11 @@ public partial class AstCodeGenerator
             "mul" or "mult" => "multiply",
             "div" => "divide",
             "sub" => "subtract",
+            "pow" or "pwr" => "power",
             "bin" => "binary",
             "un" => "unary",
             "esc" => "escape",
+            [..([.., not 's'] singular), 's'] => ExpandAbbreviation(singular)?.Pluralize(),
             _ => null
         };
         return expanded?.PreserveCase(word);

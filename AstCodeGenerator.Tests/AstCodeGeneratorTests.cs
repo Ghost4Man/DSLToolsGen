@@ -149,6 +149,34 @@ public class AstCodeGeneratorTests
     }
 
     [Fact]
+    public void considers_tokens_nested_in_parentheses()
+    {
+        AstCodeGenerator g = GetGeneratorForGrammar($$"""
+            {{grammarProlog}}
+            assignment : (ID) '=' ((ID)) ;
+            """);
+        Assert.Equal("""
+            public partial record Assignment(string LeftIdentifier, string RightIdentifier) : IAstNode;
+            """,
+            ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
+    }
+
+    [Fact]
+    public void considers_rule_refs_nested_in_parentheses()
+    {
+        AstCodeGenerator g = GetGeneratorForGrammar($$"""
+            {{grammarProlog}}
+            assignment : (expr) '=' ((expr)) ;
+            expr : ID ;
+            """);
+        Assert.Equal("""
+            public partial record Assignment(Expression LeftExpression, Expression RightExpression) : IAstNode;
+            public partial record Expression(string Identifier) : IAstNode;
+            """,
+            ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
+    }
+
+    [Fact]
     public void given_1_rule_with_comma_delimited_token_list_ー_generates_records_with_string_list_property_with_plural_name()
     {
         AstCodeGenerator g = GetGeneratorForGrammar($$"""
@@ -327,6 +355,23 @@ public class AstCodeGeneratorTests
                     public partial record VariableReferenceExpression(string Identifier) : AtomicExpression;
                     public partial record NumericLiteralExpression(string Number) : AtomicExpression;
                     public partial record StringLiteralExpression(string StringLiteral) : AtomicExpression;
+            """,
+            ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
+    }
+
+    [Fact]
+    public void given_rule_with_labeled_list_rule_refs_inside_repeated_block_ー_generates_records_with_list_properties()
+    {
+        AstCodeGenerator g = GetGeneratorForGrammar($$"""
+            {{grammarProlog}}
+            program : (statements+=stat | imports+=importDirective)* EOF ;
+            stat : 'break' ;
+            importDirective : 'import' ID ;
+            """);
+        Assert.Equal("""
+            public partial record Program(IList<Statement> Statements, IList<ImportDirective> Imports) : IAstNode;
+            public partial record Statement : IAstNode;
+            public partial record ImportDirective(string Identifier) : IAstNode;
             """,
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }

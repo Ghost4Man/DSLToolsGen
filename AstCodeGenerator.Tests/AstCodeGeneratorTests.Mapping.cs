@@ -139,8 +139,8 @@ public class AstCodeGeneratorTests_Mapping
             {
                 public override Assignment VisitAssignment(FooParser.AssignmentContext context)
                 {
-                    var Lvalue = context.lvalue()?.Accept(this);
-                    var Expression = Visit(context.expr());
+                    var Lvalue = Visit(context.lvalue());
+                    var Expression = context.expr()?.Accept(this);
                     return new Assignment(Lvalue, Expression);
                 }
 

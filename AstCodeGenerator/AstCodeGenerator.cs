@@ -158,27 +158,30 @@ public partial class AstCodeGenerator
     string ExpandAllAbbreviations(string name)
         => WordSplitterRegex().Replace(name, m => ExpandAbbreviation(m.Value) ?? m.Value);
 
-    PropertyModel? GeneratePropertyFor(SyntaxElement element)
+    IEnumerable<PropertyModel> GeneratePropertiesFor(SyntaxElement element, bool parentIsOptional, bool parentIsRepeated)
     {
         // TODO: move the ToPascalCase calls into the CSharpModelWriter
 
         Debug.WriteLine($"element of type {element.GetType().Name}: {element}");
 
+        bool isRepeated = parentIsRepeated || element.IsMany();
+        bool isOptional = parentIsOptional || element.IsOptional();
+
         if ((element as RuleRef)?.GetRuleOrNull(grammar) is Rule rule)
         {
             string elementName = element.Label ?? rule.Name;
             NodeClassModel nodeClass = FindOrGenerateAstNodeClass(rule);
-            return element.IsMany()
+            yield return isRepeated
                 ? new NodeReferenceListPropertyModel(MakeListName(ToPascalCase(ExpandAllAbbreviations(elementName))), element.Label, nodeClass)
-                : new NodeReferencePropertyModel(ToPascalCase(ExpandAllAbbreviations(elementName)), element.Label, nodeClass, element.IsOptional());
+                : new NodeReferencePropertyModel(ToPascalCase(ExpandAllAbbreviations(elementName)), element.Label, nodeClass, isOptional);
         }
         else if (element is TokenRef tokenRef && IsTokenTextImportant(tokenRef))
         {
             string elementName = tokenRef.Label ?? tokenRef.Name;
             ResolvedTokenRef resolvedTokenRef = Resolve(tokenRef);
-            return tokenRef.IsMany()
+            yield return isRepeated
                 ? new TokenTextListPropertyModel(MakeListName(ToPascalCase(ExpandAllAbbreviations(elementName))), element.Label, resolvedTokenRef)
-                : new TokenTextPropertyModel(ToPascalCase(ExpandAllAbbreviations(elementName)), element.Label, resolvedTokenRef, element.IsOptional());
+                : new TokenTextPropertyModel(ToPascalCase(ExpandAllAbbreviations(elementName)), element.Label, resolvedTokenRef, isOptional);
         }
         else if (element is TokenRef or Literal
             && element.IsOptional()
@@ -190,14 +193,22 @@ public partial class AstCodeGenerator
                 TokenRef tokenRef_ => Resolve(tokenRef_),
             };
             Debug.Assert(resolvedToken != null); // TODO: what about implicit tokens in combined grammars?
-            return new OptionalTokenPropertyModel(
+            yield return new OptionalTokenPropertyModel(
                 Name: name.StartsWithAny("Is", "Has", "Does", "Do", "Should", "Can", "Will") ? name : $"Is{name}",
                 Label: label,
                 Token: resolvedToken
             );
         }
-        else
-            return null;
+        else if (element is Block block) // recurse into blocks (`((a) | b)*`)
+        {
+            List<Alternative> alts = block.Items;
+            foreach (SyntaxElement child in alts.SelectMany(a => a.Elements))
+            {
+                var properties = GeneratePropertiesFor(child, isOptional || alts.Count > 1, isRepeated);
+                foreach (var property in properties)
+                    yield return property;
+            }
+        }
     }
 
     ResolvedTokenRef Resolve(Literal literal)
@@ -243,15 +254,10 @@ public partial class AstCodeGenerator
 
     List<PropertyModel> GeneratePropertyListFor(Alternative alt)
     {
-        List<PropertyModel> propertyList = new();
-
-        foreach (SyntaxElement element in alt.Elements)
-        {
-            if (GeneratePropertyFor(element) is not { } property)
-                continue;
-
-            propertyList.Add(property);
-        }
+        List<PropertyModel> propertyList = alt.Elements
+            .SelectMany(el => GeneratePropertiesFor(el,
+                parentIsOptional: false, parentIsRepeated: false))
+            .ToList();
 
         postProcessPropertyList(propertyList);
 

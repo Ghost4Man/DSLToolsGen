@@ -106,7 +106,7 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
     /// <returns>A string with C# code representing the <paramref name="model"/>.</returns>
     public static string ModelToString(IModel model)
     {
-        var writer = new StringWriter();
+        var writer = new StringWriter { NewLine = "\n" };
         var visitor = new CSharpModelWriter(writer);
         visitor.Visit(model);
         return writer.ToString();
@@ -117,7 +117,7 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
 
     public static string ModelToString<TModel>(TModel model, Action<CSharpModelWriter, TModel> visitorAction)
     {
-        var writer = new StringWriter();
+        var writer = new StringWriter { NewLine = "\n" };
         var visitor = new CSharpModelWriter(writer);
         visitorAction(visitor, model);
         return writer.ToString();

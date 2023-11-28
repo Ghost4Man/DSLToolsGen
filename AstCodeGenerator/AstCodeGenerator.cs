@@ -1,10 +1,10 @@
 ﻿using System.Diagnostics;
 using System.Text.RegularExpressions;
+
 using Antlr4Ast;
+using Humanizer;
 
 using DSLToolsGenerator.Models;
-
-using Humanizer;
 
 namespace DSLToolsGenerator;
 

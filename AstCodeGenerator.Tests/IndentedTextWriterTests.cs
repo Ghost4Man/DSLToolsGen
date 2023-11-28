@@ -152,7 +152,7 @@ public class IndentedTextWriterTests
 
     static (IndentedTextWriter, StringWriter) CreateNew()
     {
-        var sw = new StringWriter();
+        var sw = new StringWriter { NewLine = "\n" };
         var writer = new IndentedTextWriter(sw);
         return (writer, sw);
     }

@@ -160,8 +160,6 @@ public partial class AstCodeGenerator
 
     IEnumerable<PropertyModel> GeneratePropertiesFor(SyntaxElement element, bool parentIsOptional, bool parentIsRepeated)
     {
-        // TODO: move the ToPascalCase calls into the CSharpModelWriter
-
         Debug.WriteLine($"element of type {element.GetType().Name}: {element}");
 
         bool isRepeated = parentIsRepeated || element.IsMany();
@@ -169,32 +167,33 @@ public partial class AstCodeGenerator
 
         if ((element as RuleRef)?.GetRuleOrNull(grammar) is Rule rule)
         {
-            string elementName = element.Label ?? rule.Name;
             NodeClassModel nodeClass = FindOrGenerateAstNodeClass(rule);
+            string propertyName = makePropertyName(element, rule.Name, list: isRepeated);
             yield return isRepeated
-                ? new NodeReferenceListPropertyModel(MakeListName(ToPascalCase(ExpandAllAbbreviations(elementName))), element.Label, nodeClass)
-                : new NodeReferencePropertyModel(ToPascalCase(ExpandAllAbbreviations(elementName)), element.Label, nodeClass, isOptional);
+                ? new NodeReferenceListPropertyModel(propertyName, element.Label, nodeClass)
+                : new NodeReferencePropertyModel(propertyName, element.Label, nodeClass, isOptional);
         }
         else if (element is TokenRef tokenRef && IsTokenTextImportant(tokenRef))
         {
-            string elementName = tokenRef.Label ?? tokenRef.Name;
             ResolvedTokenRef resolvedTokenRef = Resolve(tokenRef);
+            string propertyName = makePropertyName(element, tokenRef.Name, list: isRepeated);
             yield return isRepeated
-                ? new TokenTextListPropertyModel(MakeListName(ToPascalCase(ExpandAllAbbreviations(elementName))), element.Label, resolvedTokenRef)
-                : new TokenTextPropertyModel(ToPascalCase(ExpandAllAbbreviations(elementName)), element.Label, resolvedTokenRef, isOptional);
+                ? new TokenTextListPropertyModel(propertyName, element.Label, resolvedTokenRef)
+                : new TokenTextPropertyModel(propertyName, element.Label, resolvedTokenRef, isOptional);
         }
         else if (element is TokenRef or Literal
             && element.IsOptional()
             && element.Label is string label)
         {
-            string name = ToPascalCase(ExpandAllAbbreviations(label)).Trim('_'); // trim any underscores used for avoiding keywords
+            string propertyName = makePropertyName(element, null!, list: false);
             ResolvedTokenRef resolvedToken = element switch {
                 Literal literal => Resolve(literal),
                 TokenRef tokenRef_ => Resolve(tokenRef_),
             };
             Debug.Assert(resolvedToken != null); // TODO: what about implicit tokens in combined grammars?
             yield return new OptionalTokenPropertyModel(
-                Name: name.StartsWithAny("Is", "Has", "Does", "Do", "Should", "Can", "Will") ? name : $"Is{name}",
+                Name: propertyName.StartsWithAny("Is", "Has", "Does", "Do", "Should", "Can", "Will")
+                    ? propertyName : $"Is{propertyName}",
                 Label: label,
                 Token: resolvedToken
             );
@@ -208,6 +207,24 @@ public partial class AstCodeGenerator
                 foreach (var property in properties)
                     yield return property;
             }
+        }
+
+        string makePropertyName(SyntaxElement element, string refName, bool list)
+        {
+            // TODO: move the conversion to PascalCase into CSharpModelWriter
+            string baseName = (element.Label ?? refName)
+                .Trim('_'); // trim any underscores used for avoiding keywords ('public', 'import', etc.)
+            string propName = ToPascalCase(ExpandAllAbbreviations(baseName));
+            if (list)
+            {
+                string pluralized = propName.Pluralize(inputIsKnownToBeSingular: false);
+                return (propName == pluralized && element.Label is null)
+                    // for example `statements+` or `functions*` (rule name is already plural)
+                    ? $"{propName}List"
+                    : pluralized;
+            }
+            else
+                return propName;
         }
     }
 
@@ -237,20 +254,6 @@ public partial class AstCodeGenerator
             return string.Concat(name.Split('_')
                 .Select(word => word.ToLowerInvariant().Capitalize()));
     }
-
-    string MakeListName(string singular)
-    {
-        string pluralized = singular.Pluralize(inputIsKnownToBeSingular: false);
-        return (singular == pluralized) ? $"{singular}List" : pluralized;
-    }
-
-    //=> singular switch {
-    //    "index" => "indices",
-    //    "matrix" => "matrices",
-    //    [.., 's'] => singular + "es",
-    //    [.., 'y'] => singular + "ies",
-    //    _ => singular + "s"
-    //};
 
     List<PropertyModel> GeneratePropertyListFor(Alternative alt)
     {

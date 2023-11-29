@@ -8,9 +8,16 @@ using DSLToolsGenerator.Models;
 
 namespace DSLToolsGenerator;
 
+public record Diagnostic(DiagnosticSeverity Severity, string Message)
+{
+    public override string ToString() => $"{Severity}: {Message}";
+}
+public enum DiagnosticSeverity { Info, Warning, Error }
+
 public partial class AstCodeGenerator
 {
     readonly Grammar grammar;
+    readonly Action<Diagnostic> diagnosticHandler;
     readonly Dictionary<string, Rule> lexerRulesByLiteral;
 
     // Mapping from parser rules to codegen models of AST Node classes.
@@ -18,12 +25,13 @@ public partial class AstCodeGenerator
     // for rules with multiple alternatives.
     readonly Dictionary<Rule, NodeClassModel> nodeClassesByRule = new();
 
-    public AstCodeGenerator(Grammar parserGrammar)
+    public AstCodeGenerator(Grammar parserGrammar, Action<Diagnostic> diagnosticHandler)
     {
         if (parserGrammar.Kind == GrammarKind.Lexer)
             throw new ArgumentException("cannot generate AST from a lexer grammar");
 
         this.grammar = parserGrammar;
+        this.diagnosticHandler = diagnosticHandler;
         this.lexerRulesByLiteral = parserGrammar.LexerRules
             .Select(r => r.AlternativeList.Items is [Alternative { Elements: [Literal literal] }]
                 ? new { Rule = r, Literal = literal }
@@ -180,8 +188,9 @@ public partial class AstCodeGenerator
             }
             else
             {
-                Debug.Fail($"{ruleRef.Span.FilePath}:{ruleRef.Span.Begin.Line}: " +
-                    $"reference to unknown parser rule '{ruleRef.Name}'");
+                diagnosticHandler(new(DiagnosticSeverity.Error,
+                    $"{ruleRef.Span.FilePath}:{ruleRef.Span.Begin.Line}: " +
+                    $"reference to unknown parser rule '{ruleRef.Name}'"));
             }
         }
         else if (element is TokenRef tokenRef && IsTokenTextImportant(tokenRef))
@@ -251,8 +260,11 @@ public partial class AstCodeGenerator
     {
         bool found = grammar.TryGetRule(tokenRef.Name, out Rule? lexerRule);
         if (!found)
-            Console.Error.WriteLine("warning: token reference could not find " +
-                "the corresponding lexer rule for token reference " + tokenRef);
+        {
+            diagnosticHandler(new(DiagnosticSeverity.Warning,
+                "token reference could not find the corresponding " +
+                "lexer rule for token reference " + tokenRef));
+        }
 
         return new ResolvedTokenRef(tokenRef.Name, Literal: null, lexerRule);
     }

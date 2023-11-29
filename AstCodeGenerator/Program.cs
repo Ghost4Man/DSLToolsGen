@@ -54,7 +54,9 @@ Task<int> GenerateAstCodeFromGrammarFile(FileInfo grammarFile, FileInfo? outputF
         grammar.Kind = GrammarKind.Full;
     }
 
-    var generator = new AstCodeGenerator(grammar);
+    var generator = new AstCodeGenerator(grammar, diag => {
+        Console.Error.WriteLine(diag.ToString());
+    });
     var model = generator.GenerateAstCodeModel();
     if (outputFile != null)
     {

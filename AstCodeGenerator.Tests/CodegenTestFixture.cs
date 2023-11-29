@@ -6,6 +6,11 @@ public abstract class CodegenTestFixture(ITestOutputHelper testOutput)
     {
         var grammar = Antlr4Ast.Grammar.Parse(grammarCode);
         Assert.Empty(grammar.ErrorMessages);
-        return new AstCodeGenerator(grammar);
+        return new AstCodeGenerator(grammar, d => {
+            if (d.Severity == DiagnosticSeverity.Error)
+                Assert.Fail(d.ToString());
+            else
+                testOutput.WriteLine(d.ToString());
+        });
     }
 }

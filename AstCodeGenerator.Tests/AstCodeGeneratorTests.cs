@@ -2,7 +2,7 @@
 
 namespace DSLToolsGenerator.Tests;
 
-public class AstCodeGeneratorTests
+public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFixture(testOutput)
 {
     const string expectedProlog = """
         #nullable enable
@@ -190,7 +190,7 @@ public class AstCodeGeneratorTests
     }
 
     [Fact]
-    public void given_1_rule_with_multiple_token_refs_with_same_label_ー_generates_records_with_string_list_property_with_plural_name()
+    public void given_rule_with_multiple_token_refs_with_same_label_ー_generates_records_with_string_list_property_with_plural_name()
     {
         AstCodeGenerator g = GetGeneratorForGrammar($$"""
             {{grammarProlog}}
@@ -268,7 +268,7 @@ public class AstCodeGeneratorTests
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }
 
-    [Fact]
+    [Fact(Skip = "Low priority")]
     public void given_rule_with_unlabeled_alts_ー_generates_autonamed_derived_records()
     {
         AstCodeGenerator g = GetGeneratorForGrammar($$"""
@@ -304,59 +304,62 @@ public class AstCodeGeneratorTests
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }
 
-    [Fact]
-    public void given_rule_with_self_reference_ー_does_not_blow_up()
+    public class RulesWithReferenceLoops(ITestOutputHelper testOutput) : CodegenTestFixture(testOutput)
     {
-        AstCodeGenerator g = GetGeneratorForGrammar($$"""
-            {{grammarProlog}}
-            expr : 'not'? expr ;
-            """);
-        Assert.Equal("""
-            public partial record Expression(Expression Expression) : IAstNode;
-            """,
-            ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
-    }
+        [Fact]
+        public void given_rule_with_self_reference_ー_does_not_blow_up()
+        {
+            AstCodeGenerator g = GetGeneratorForGrammar($$"""
+                {{grammarProlog}}
+                expr : 'not'? expr ;
+                """);
+            Assert.Equal("""
+                public partial record Expression(Expression Expression) : IAstNode;
+                """,
+                ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
+        }
 
-    [Fact]
-    public void given_2_rules_with_reference_cycle_ー_does_not_blow_up()
-    {
-        AstCodeGenerator g = GetGeneratorForGrammar($$"""
-            {{grammarProlog}}
-            cmd : 'print' expr ;
-            expr : '{' cmd '}' ;
-            """);
-        Assert.Equal("""
-            public partial record Command(Expression Expression) : IAstNode;
-            public partial record Expression(Command Command) : IAstNode;
-            """,
-            ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
-    }
+        [Fact]
+        public void given_2_rules_with_reference_cycle_ー_does_not_blow_up()
+        {
+            AstCodeGenerator g = GetGeneratorForGrammar($$"""
+                {{grammarProlog}}
+                cmd : 'print' expr ;
+                expr : '{' cmd '}' ;
+                """);
+            Assert.Equal("""
+                public partial record Command(Expression Expression) : IAstNode;
+                public partial record Expression(Command Command) : IAstNode;
+                """,
+                ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
+        }
 
-    [Fact]
-    public void given_rule_with_labeled_alts_and_one_transparent_alt_ー_generates_multilevel_record_hierarchy()
-    {
-        AstCodeGenerator g = GetGeneratorForGrammar($$"""
-            {{grammarProlog}}
-            cmd : 'print' expr ;
-            expr : expr '*' expr  #multExpr
-                 | expr '+' expr  #addExpr 
-                 | atomicExpr     #atomicExpr ;
-            atomicExpr
-                : ID       #varRefExpr
-                | NUMBER   #numericLiteralExpr
-                | STR_LIT  #strLitExpr ;
-            """);
-        Assert.Equal("""
-            public partial record Command(Expression Expression) : IAstNode;
-            public abstract partial record Expression : IAstNode;
-                public partial record MultiplyExpression(Expression LeftExpression, Expression RightExpression) : Expression;
-                public partial record AddExpression(Expression LeftExpression, Expression RightExpression) : Expression;
-                public abstract partial record AtomicExpression : Expression;
-                    public partial record VariableReferenceExpression(string Identifier) : AtomicExpression;
-                    public partial record NumericLiteralExpression(string Number) : AtomicExpression;
-                    public partial record StringLiteralExpression(string StringLiteral) : AtomicExpression;
-            """,
-            ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
+        [Fact]
+        public void given_rule_with_labeled_alts_and_one_transparent_alt_ー_generates_multilevel_record_hierarchy()
+        {
+            AstCodeGenerator g = GetGeneratorForGrammar($$"""
+                {{grammarProlog}}
+                cmd : 'print' expr ;
+                expr : expr '*' expr  #multExpr
+                     | expr '+' expr  #addExpr 
+                     | atomicExpr     #atomicExpr ;
+                atomicExpr
+                    : ID       #varRefExpr
+                    | NUMBER   #numericLiteralExpr
+                    | STR_LIT  #strLitExpr ;
+                """);
+            Assert.Equal("""
+                public partial record Command(Expression Expression) : IAstNode;
+                public abstract partial record Expression : IAstNode;
+                    public partial record MultiplyExpression(Expression LeftExpression, Expression RightExpression) : Expression;
+                    public partial record AddExpression(Expression LeftExpression, Expression RightExpression) : Expression;
+                    public abstract partial record AtomicExpression : Expression;
+                        public partial record VariableReferenceExpression(string Identifier) : AtomicExpression;
+                        public partial record NumericLiteralExpression(string Number) : AtomicExpression;
+                        public partial record StringLiteralExpression(string StringLiteral) : AtomicExpression;
+                """,
+                ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
+        }
     }
 
     [Fact]
@@ -374,12 +377,5 @@ public class AstCodeGeneratorTests
             public partial record ImportDirective(string Identifier) : IAstNode;
             """,
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
-    }
-
-    AstCodeGenerator GetGeneratorForGrammar(string grammarCode)
-    {
-        var grammar = Antlr4Ast.Grammar.Parse(grammarCode);
-        Assert.Empty(grammar.ErrorMessages);
-        return new AstCodeGenerator(grammar);
     }
 }

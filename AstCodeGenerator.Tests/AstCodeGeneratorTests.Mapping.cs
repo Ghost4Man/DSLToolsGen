@@ -2,7 +2,7 @@
 
 namespace DSLToolsGenerator.Tests;
 
-public class AstCodeGeneratorTests_Mapping
+public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : CodegenTestFixture(testOutput)
 {
     const string grammarProlog = """
         grammar Foo;
@@ -154,7 +154,7 @@ public class AstCodeGeneratorTests_Mapping
             lvalue : expr '.' ID ;
             expr : ID ;
             """);
-        Assert.StartsWith("""
+        Assert.Equal($$"""
             public class AstBuilder : FooBaseVisitor<IAstNode>
             {
                 public override Assignment VisitAssignment(FooParser.AssignmentContext context)
@@ -186,7 +186,7 @@ public class AstCodeGeneratorTests_Mapping
             lvalue : (expr '.')? ID ;
             expr : ID ;
             """);
-        Assert.StartsWith("""
+        Assert.Equal($$"""
             public class AstBuilder : FooBaseVisitor<IAstNode>
             {
                 public override Assignment VisitAssignment(FooParser.AssignmentContext context)
@@ -282,12 +282,5 @@ public class AstCodeGeneratorTests_Mapping
             }
             """,
             ModelToString(g.GenerateAstCodeModel().AstBuilder).TrimEnd());
-    }
-
-    AstCodeGenerator GetGeneratorForGrammar(string grammarCode)
-    {
-        var grammar = Antlr4Ast.Grammar.Parse(grammarCode);
-        Assert.Empty(grammar.ErrorMessages);
-        return new AstCodeGenerator(grammar);
     }
 }

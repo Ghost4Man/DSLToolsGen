@@ -168,13 +168,21 @@ public partial class AstCodeGenerator
         bool isRepeated = parentIsRepeated || element.IsMany();
         bool isOptional = parentIsOptional || element.IsOptional();
 
-        if ((element as RuleRef)?.GetRuleOrNull(grammar) is Rule rule)
+        if (element is RuleRef ruleRef)
         {
-            NodeClassModel nodeClass = FindOrGenerateAstNodeClass(rule);
-            string propertyName = makePropertyName(element, rule.Name, list: isRepeated);
-            yield return isRepeated
-                ? new NodeReferenceListPropertyModel(propertyName, element.Label, nodeClass)
-                : new NodeReferencePropertyModel(propertyName, element.Label, nodeClass, isOptional);
+            if (ruleRef.GetRuleOrNull(grammar) is Rule rule)
+            {
+                NodeClassModel nodeClass = FindOrGenerateAstNodeClass(rule);
+                string propertyName = makePropertyName(element, rule.Name, list: isRepeated);
+                yield return isRepeated
+                    ? new NodeReferenceListPropertyModel(propertyName, element.Label, nodeClass)
+                    : new NodeReferencePropertyModel(propertyName, element.Label, nodeClass, isOptional);
+            }
+            else
+            {
+                Debug.Fail($"{ruleRef.Span.FilePath}:{ruleRef.Span.Begin.Line}: " +
+                    $"reference to unknown parser rule '{ruleRef.Name}'");
+            }
         }
         else if (element is TokenRef tokenRef && IsTokenTextImportant(tokenRef))
         {

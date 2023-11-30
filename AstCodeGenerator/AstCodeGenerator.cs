@@ -88,7 +88,7 @@ public partial class AstCodeGenerator
 
             NodeClassModel nodeClassModelForAlternative(Rule parserRule, string className, Alternative alt)
             {
-                var parameters = GeneratePropertyListFor(alt);
+                var parameters = GeneratePostprocessedPropertyListFor(alt);
                 return new NodeClassModel(className, parserRule, parameters);
             }
 
@@ -169,12 +169,45 @@ public partial class AstCodeGenerator
     string ExpandAllAbbreviations(string name)
         => WordSplitterRegex().Replace(name, m => ExpandAbbreviation(m.Value) ?? m.Value);
 
-    IEnumerable<PropertyModel> GeneratePropertiesFor(SyntaxElement element, bool parentIsOptional, bool parentIsRepeated)
+    IEnumerable<PropertyModel> GeneratePropertiesForAll(IReadOnlyList<SyntaxElement> elements,
+        bool parentIsOptional, bool parentIsRepeated)
     {
+        ArraySegment<SyntaxElement> rest = elements.ToArray();
+        while (rest.Count > 0)
+        {
+            var properties = GeneratePropertiesFor(rest, out rest, parentIsOptional, parentIsRepeated);
+            foreach (var property in properties)
+                yield return property;
+        }
+    }
+
+    IEnumerable<PropertyModel> GeneratePropertiesFor(
+        ArraySegment<SyntaxElement> elementSpan, out ArraySegment<SyntaxElement> rest,
+        bool parentIsOptional, bool parentIsRepeated)
+    {
+        SyntaxElement element = elementSpan[0];
         Debug.WriteLine($"element of type {element.GetType().Name}: {element}");
 
+        rest = elementSpan[1..];
         bool isRepeated = parentIsRepeated || element.IsMany();
         bool isOptional = parentIsOptional || element.IsOptional();
+
+        // block to limit the scope of variables in patterns
+        {
+            // e.g.  TOK (',' TOK)*  or  rule (COMMA rule)+
+            if (elementSpan is [var a and (RuleRef or TokenRef), Block([Alternative([var delimiter, var b])]) block, ..var newRest]
+                && RuleOrTokenRefsAreEqual(a, b)
+                && !a.IsMany() && a.Label is null // we already know they are equal, so no need to check both
+                && block.IsMany()
+                && (delimiter is Literal || (delimiter is TokenRef t && !IsTokenTextImportant(t))))
+            {
+                diagnosticHandler(new(DiagnosticSeverity.Info,
+                    $"recognized a pattern of {delimiter}-delimited list of {a}"));
+                rest = newRest;
+                isRepeated = true;
+                // let execution fall through to the below case of "element is RuleRef" or "element is TokenRef"
+            }
+        }
 
         if (element is RuleRef ruleRef)
         {
@@ -182,9 +215,9 @@ public partial class AstCodeGenerator
             {
                 NodeClassModel nodeClass = FindOrGenerateAstNodeClass(rule);
                 string propertyName = makePropertyName(element, rule.Name, list: isRepeated);
-                yield return isRepeated
+                return [isRepeated
                     ? new NodeReferenceListPropertyModel(propertyName, element.Label, nodeClass)
-                    : new NodeReferencePropertyModel(propertyName, element.Label, nodeClass, isOptional);
+                    : new NodeReferencePropertyModel(propertyName, element.Label, nodeClass, isOptional)];
             }
             else
             {
@@ -197,9 +230,9 @@ public partial class AstCodeGenerator
         {
             ResolvedTokenRef resolvedTokenRef = Resolve(tokenRef);
             string propertyName = makePropertyName(element, tokenRef.Name, list: isRepeated);
-            yield return isRepeated
+            return [isRepeated
                 ? new TokenTextListPropertyModel(propertyName, element.Label, resolvedTokenRef)
-                : new TokenTextPropertyModel(propertyName, element.Label, resolvedTokenRef, isOptional);
+                : new TokenTextPropertyModel(propertyName, element.Label, resolvedTokenRef, isOptional)];
         }
         else if (element is TokenRef or Literal
             && element.IsOptional()
@@ -211,23 +244,20 @@ public partial class AstCodeGenerator
                 TokenRef tokenRef_ => Resolve(tokenRef_),
             };
             Debug.Assert(resolvedToken != null); // TODO: what about implicit tokens in combined grammars?
-            yield return new OptionalTokenPropertyModel(
+            return [new OptionalTokenPropertyModel(
                 Name: propertyName.StartsWithAny("Is", "Has", "Does", "Do", "Should", "Can", "Will")
                     ? propertyName : $"Is{propertyName}",
                 Label: label,
                 Token: resolvedToken
-            );
+            )];
         }
         else if (element is Block block) // recurse into blocks (`((a) | b)*`)
         {
             List<Alternative> alts = block.Items;
-            foreach (SyntaxElement child in alts.SelectMany(a => a.Elements))
-            {
-                var properties = GeneratePropertiesFor(child, isOptional || alts.Count > 1, isRepeated);
-                foreach (var property in properties)
-                    yield return property;
-            }
+            return alts.SelectMany(a => GeneratePropertiesForAll(a.Elements,
+                isOptional || alts.Count > 1, isRepeated));
         }
+        return [];
 
         string makePropertyName(SyntaxElement element, string refName, bool list)
         {
@@ -246,6 +276,18 @@ public partial class AstCodeGenerator
             else
                 return propName;
         }
+    }
+
+    bool RuleOrTokenRefsAreEqual(SyntaxElement first, SyntaxElement second)
+    {
+        var ruleRefToTuple = (RuleRef r) => (r.Name, r.Suffix, r.IsNot, r.Label, r.LabelKind);
+        var tokenRefToTuple = (TokenRef t) => (t.Name, t.Suffix, t.IsNot, t.Label, t.LabelKind);
+
+        return (first, second) switch {
+            (RuleRef a, RuleRef b) => ruleRefToTuple(a) == ruleRefToTuple(b),
+            (TokenRef a, TokenRef b) => tokenRefToTuple(a) == tokenRefToTuple(b),
+            _ => false
+        };
     }
 
     ResolvedTokenRef Resolve(Literal literal)
@@ -278,18 +320,17 @@ public partial class AstCodeGenerator
                 .Select(word => word.ToLowerInvariant().Capitalize()));
     }
 
-    List<PropertyModel> GeneratePropertyListFor(Alternative alt)
+    List<PropertyModel> GeneratePostprocessedPropertyListFor(Alternative alt)
     {
-        List<PropertyModel> propertyList = alt.Elements
-            .SelectMany(el => GeneratePropertiesFor(el,
-                parentIsOptional: false, parentIsRepeated: false))
+        List<PropertyModel> propertyList =
+            GeneratePropertiesForAll(alt.Elements, parentIsOptional: false, parentIsRepeated: false)
             .ToList();
 
-        postProcessPropertyList(propertyList);
+        postprocessPropertyList(propertyList);
 
         return propertyList;
 
-        static void postProcessPropertyList(List<PropertyModel> propertyList)
+        static void postprocessPropertyList(List<PropertyModel> propertyList)
         {
             foreach (var duplicateGroup in propertyList.GroupBy(p => p.Name))
             {
@@ -345,4 +386,15 @@ static class TokenRefExtensions
 
     public static bool IsOptional(this SyntaxElement element)
         => element.Suffix is SuffixKind.Optional or SuffixKind.OptionalGreedy;
+}
+
+static class SyntaxElementExtensions
+{
+    // Deconstruct extensions for pattern matching:
+
+    public static void Deconstruct(this Block block, out IReadOnlyList<Alternative> alts)
+        => alts = block.Items;
+
+    public static void Deconstruct(this Alternative alt, out IReadOnlyList<SyntaxElement> elements)
+        => elements = alt.Elements;
 }

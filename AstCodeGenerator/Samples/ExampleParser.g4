@@ -22,8 +22,7 @@ fnBody : '{' '}' ;
 
 parameter : ID ;
 
-parameterList : parameter* ;
-//parameterList : (parameter (',' parameter)*)? ;
+parameterList : (parameter (',' parameter)*)? ;
 
 block : '{' stat* '}' ;
 

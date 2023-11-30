@@ -19,6 +19,7 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
         NUMBER : [0-9]+ ;
         FLOAT : INT '.' INT ;
         STR_LIT : '"' ~["]+ '"' ;
+        COMMA : ',' ;
         """;
 
     /*
@@ -176,15 +177,34 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }
 
-    [Fact]
-    public void given_1_rule_with_comma_delimited_token_list_ー_generates_records_with_string_list_property_with_plural_name()
+    [Theory]
+    [InlineData("ID", "'.'", "string")]
+    [InlineData("ID", "commas+=','", "string")]
+    [InlineData("id", "COMMA", "Identifier")]
+    public void given_1_rule_with_delimited_element_list_ー_generates_records_with_list_property_with_plural_name(
+        string element, string delimiter, string expectedListElementType)
     {
         AstCodeGenerator g = GetGeneratorForGrammar($$"""
             {{grammarProlog}}
-            importStmt : 'import' ID (',' ID)* ;
+            importStmt : 'import' {{element}} ({{delimiter}} {{element}})* ;
+            id : value=ID ;
+            """);
+        Assert.Equal($$"""
+            public partial record ImportStatement(IList<{{expectedListElementType}}> Identifiers) : IAstNode;
+            public partial record Identifier(string Value) : IAstNode;
+            """,
+            ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
+    }
+
+    [Fact]
+    public void given_rule_with_token_ref_with_list_label_ー_generates_record_with_string_list_property_with_plural_name()
+    {
+        AstCodeGenerator g = GetGeneratorForGrammar($$"""
+            {{grammarProlog}}
+            idInAList : ids+=ID ;
             """);
         Assert.Equal("""
-            public partial record ImportStatement(IList<string> Identifiers) : IAstNode;
+            public partial record IdentifierInAList(IList<string> Identifiers) : IAstNode;
             """,
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }

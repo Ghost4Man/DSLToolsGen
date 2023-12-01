@@ -23,6 +23,19 @@ static class StringExtensions
             capitalized ? str.Capitalize() :
             str;
     }
+
+    // useful for null coalescing, e.g. `nullableStr?.Prepend("pre"))`
+    public static string Prepend(this string str, string prefix)
+    {
+        ArgumentNullException.ThrowIfNull(str);
+        return prefix + str;
+    }
+
+    public static string Append(this string str, string suffix)
+    {
+        ArgumentNullException.ThrowIfNull(str);
+        return str + suffix;
+    }
 }
 
 static class EnumerableExtensions

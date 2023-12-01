@@ -44,7 +44,7 @@ public partial class AstCodeGenerator
     {
         var nodeClasses = grammar.ParserRules.Select(FindOrGenerateAstNodeClass);
         var astBuilder = new AstBuilderModel(grammar.Name, getParserClassNameFromGrammar(grammar),
-            nodeClasses.Select(nc => new AstMappingModel(nc.ParserRule, nc)).ToList());
+            nodeClasses.SelectMany(getAstMappingModels).ToList());
         return new AstCodeModel(nodeClasses.ToList(), astBuilder);
 
         static string getParserClassNameFromGrammar(Grammar grammar)
@@ -52,6 +52,11 @@ public partial class AstCodeGenerator
             => grammar.Kind == GrammarKind.Full
                 ? grammar.Name + "Parser"
                 : grammar.Name;
+
+        static IEnumerable<AstMappingModel> getAstMappingModels(NodeClassModel nodeClass) => [
+            new AstMappingModel(nodeClass.ParserRule, nodeClass),
+            .. nodeClass.Variants.SelectMany(getAstMappingModels)
+        ];
     }
 
     NodeClassModel FindOrGenerateAstNodeClass(Rule parserRule)
@@ -78,7 +83,7 @@ public partial class AstCodeGenerator
             else // generate derived record types for multi-alt rules
             {
                 var altNames = autoNameAlternatives(parserRule);
-                return new NodeClassModel(className, parserRule, []) {
+                return new NodeClassModel(className, parserRule, SourceAlt: null, []) {
                     Variants = alts.Zip(altNames, (a, altName) => {
                         string variantClassName = ToPascalCase(altName);
                         return nodeClassModelForAlternative(parserRule, variantClassName, a);
@@ -89,7 +94,7 @@ public partial class AstCodeGenerator
             NodeClassModel nodeClassModelForAlternative(Rule parserRule, string className, Alternative alt)
             {
                 var parameters = GeneratePostprocessedPropertyListFor(alt);
-                return new NodeClassModel(className, parserRule, parameters);
+                return new NodeClassModel(className, parserRule, alt, parameters);
             }
 
             IEnumerable<string> autoNameAlternatives(Rule parserRule)

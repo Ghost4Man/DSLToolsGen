@@ -17,7 +17,7 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
 
     public override void Visit(NodeClassModel nodeClass)
     {
-        string @abstract = nodeClass.Variants.Count > 0 ? "abstract " : "";
+        string @abstract = nodeClass.IsAbstract ? "abstract " : "";
 
         Output.WriteCode($"""
             public {@abstract}partial record {nodeClass.Name}{
@@ -64,15 +64,27 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
         void visit(AstMappingModel astMapping)
         {
             var (rule, astClass) = astMapping;
-            Output.WriteCode($$"""
-                public override {{astClass.Name}} Visit{{rule.Name.Capitalize()}}({{
-                    astBuilderModel.GetRuleContextClassName(rule)}} context)
-                {
-                    {{astClass.Properties.MakeString("\n", p =>
-                        $"var {p.Name} = {GetCodeForExtractingValueFromParseTree(p)};")}}
-                    return new {{astClass.Name}}({{astClass.Properties.MakeString(", ", p => p.Name)}});
-                }
-                """);
+            string contextName = astClass.SourceContextName;
+            string contextClassName = $"{astBuilderModel.ParserClassName}.{contextName}Context";
+
+            if (astClass.IsAbstract)
+            {
+                Output.WriteCode($$"""
+                    public virtual {{astClass.Name}} Visit{{contextName}}({{contextClassName}} context)
+                        => ({{astClass.Name}})Visit(context);
+                    """);
+            }
+            else
+            {
+                Output.WriteCode($$"""
+                    public override {{astClass.Name}} Visit{{contextName}}({{contextClassName}} context)
+                    {
+                        {{astClass.Properties.MakeString("\n", p =>
+                            $"var {p.Name} = {GetCodeForExtractingValueFromParseTree(p)};")}}
+                        return new {{astClass.Name}}({{astClass.Properties.MakeString(", ", p => p.Name)}});
+                    }
+                    """);
+            }
         }
     }
 

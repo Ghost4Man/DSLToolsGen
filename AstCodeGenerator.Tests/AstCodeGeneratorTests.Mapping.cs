@@ -283,4 +283,39 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             """,
             ModelToString(g.GenerateAstCodeModel().AstBuilder).TrimEnd());
     }
+
+    [Fact]
+    public void given_rule_with_labeled_alts_ー_generates_Visit_methods_for_alts_and_abstract_base()
+    {
+        AstCodeGenerator g = GetGeneratorForGrammar($$"""
+            {{grammarProlog}}
+            stmt : ID '=' expr ';' 	  #assignmentStmt
+                 | 'print' expr ';'   #printStmt
+                 ;
+            expr : ID ;
+            """);
+        Assert.Equal($$"""
+            public class AstBuilder : FooBaseVisitor<IAstNode>
+            {
+                public virtual Statement VisitStmt(FooParser.StmtContext context)
+                    => (Statement)Visit(context);
+
+                public override AssignmentStatement VisitAssignmentStmt(FooParser.AssignmentStmtContext context)
+                {
+                    var Identifier = context.ID().GetText();
+                    var Expression = Visit(context.expr());
+                    return new AssignmentStatement(Identifier, Expression);
+                }
+
+                public override PrintStatement VisitPrintStmt(FooParser.PrintStmtContext context)
+                {
+                    var Expression = Visit(context.expr());
+                    return new PrintStatement(Expression);
+                }
+            
+                {{visitMethodForSimpleIdExpression}}
+            }
+            """,
+            ModelToString(g.GenerateAstCodeModel().AstBuilder).TrimEnd());
+    }
 }

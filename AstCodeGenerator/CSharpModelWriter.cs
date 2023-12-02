@@ -9,11 +9,11 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
     string TypeName(string typeName, bool nullable) => typeName + (nullable ? "?" : "");
     string TypeName(NodeClassModel nodeClass, bool nullable) => TypeName(nodeClass.Name, nullable);
 
-    public override void Visit(NodeReferencePropertyModel prop) => Output.Write($"{TypeName(prop.NodeClass, prop.Optional)} {prop.Name}");
+    public override void Visit(NodeReferencePropertyModel prop) => Output.Write($"{TypeName(prop.NodeClass.Value, prop.Optional)} {prop.Name}");
     public override void Visit(TokenTextPropertyModel prop) => Output.Write($"{TypeName("string", prop.Optional)} {prop.Name}");
     public override void Visit(TokenTextListPropertyModel prop) => Output.Write($"IList<string> {prop.Name}");
     public override void Visit(OptionalTokenPropertyModel prop) => Output.Write($"bool {prop.Name}");
-    public override void Visit(NodeReferenceListPropertyModel prop) => Output.Write($"IList<{prop.NodeClass.Name}> {prop.Name}");
+    public override void Visit(NodeReferenceListPropertyModel prop) => Output.Write($"IList<{prop.NodeClass.Value.Name}> {prop.Name}");
 
     public override void Visit(NodeClassModel nodeClass)
     {
@@ -104,10 +104,10 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
                 $"Array.ConvertAll(context.{tokenAccessor(label?.Prepend("_"), token)}, t => t.{tokenTextAccessor(label)})",
             OptionalTokenPropertyModel(_, var label, var token) =>
                 $"context.{tokenAccessor(label, token)} != null",
-            NodeReferencePropertyModel(_, var label, var nodeClass, var opt) =>
+            NodeReferencePropertyModel(_, var label, { Value: var nodeClass }, var opt) =>
                 opt ? $"context.{ruleContextAccessor(label, nodeClass)}?.Accept(Visit{nodeClass.SourceContextName})"
                     : $"Visit{nodeClass.SourceContextName}(context.{ruleContextAccessor(label, nodeClass)})",
-            NodeReferenceListPropertyModel(_, var label, var nodeClass) =>
+            NodeReferenceListPropertyModel(_, var label, { Value: var nodeClass }) =>
                 $"context.{ruleContextAccessor(label?.Prepend("_"), nodeClass)}.Select(Visit{nodeClass.SourceContextName}).ToList()",
         };
 

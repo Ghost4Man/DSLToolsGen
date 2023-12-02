@@ -20,11 +20,16 @@ public abstract partial record PropertyModel(string Name, string? Label) : IMode
 
 [Acceptor<IModel>]
 public partial record NodeReferencePropertyModel(string Name, string? Label,
-    NodeClassModel NodeClass, bool Optional) : PropertyModel(Name, Label);
+    // The Lazy is needed so that we don't get stuck while
+    // fetching references to self (or mutual rule references).
+    // This assumes we only access the NodeClass property after all NodeClasses are generated
+    Lazy<NodeClassModel> NodeClass,
+    bool Optional
+    ) : PropertyModel(Name, Label);
 
 [Acceptor<IModel>]
 public partial record NodeReferenceListPropertyModel(string Name, string? Label,
-    NodeClassModel NodeClass) : PropertyModel(Name, Label);
+    Lazy<NodeClassModel> NodeClass) : PropertyModel(Name, Label);
 
 [Acceptor<IModel>]
 public partial record TokenTextPropertyModel(string Name, string? Label,

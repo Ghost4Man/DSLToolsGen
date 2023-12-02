@@ -62,8 +62,8 @@ public partial class AstCodeGenerator
     NodeClassModel FindOrGenerateAstNodeClass(Rule parserRule)
     {
         return nodeClassesByRule.TryGetValue(parserRule, out var nodeClass)
-            ? nodeClass ?? throw new NotImplementedException("found rule reference cycle " +
-                $"(involving rule '{parserRule.Name}'), which is currently not handled")
+            ? nodeClass ?? throw new UnreachableException(
+                $"found unexpected rule reference cycle (involving rule '{parserRule.Name}')")
             : (nodeClassesByRule[parserRule] = generateAstNodeClass(parserRule));
 
         NodeClassModel generateAstNodeClass(Rule parserRule)
@@ -71,7 +71,8 @@ public partial class AstCodeGenerator
             if (parserRule.IsLexer)
                 throw new ArgumentException($"{parserRule} is not a parser rule!");
 
-            nodeClassesByRule[parserRule] = null!; // mark this as null to prevent stack overflow
+            // use null to mark this as "currently being generated" to prevent stack overflow
+            nodeClassesByRule[parserRule] = null!;
 
             string className = GetGeneratedClassName(parserRule);
             List<Alternative> alts = parserRule.AlternativeList.Items;
@@ -218,7 +219,7 @@ public partial class AstCodeGenerator
         {
             if (ruleRef.GetRuleOrNull(grammar) is Rule rule)
             {
-                NodeClassModel nodeClass = FindOrGenerateAstNodeClass(rule);
+                Lazy<NodeClassModel> nodeClass = new(() => FindOrGenerateAstNodeClass(rule));
                 string propertyName = makePropertyName(element, rule.Name, list: isRepeated);
                 return [isRepeated
                     ? new NodeReferenceListPropertyModel(propertyName, element.Label, nodeClass)

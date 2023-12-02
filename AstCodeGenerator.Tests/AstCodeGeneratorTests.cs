@@ -361,28 +361,34 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
         }
 
         [Fact]
-        public void given_rule_with_labeled_alts_and_one_transparent_alt_ー_generates_multilevel_record_hierarchy()
+        public void given_multiple_rules_with_reference_cycles_ー_does_not_blow_up()
         {
             AstCodeGenerator g = GetGeneratorForGrammar($$"""
                 {{grammarProlog}}
-                cmd : 'print' expr ;
-                expr : expr '*' expr  #multExpr
-                     | expr '+' expr  #addExpr 
-                     | atomicExpr     #atomicExpr ;
-                atomicExpr
-                    : ID       #varRefExpr
-                    | NUMBER   #numericLiteralExpr
-                    | STR_LIT  #strLitExpr ;
+                stmt : expr '=' expr ';'   #assignmentStmt
+                     | expr ';'            #exprStmt
+                     | block               #blockStmt ;
+                expr : (ID | NUMBER | STR_LIT)       #atomicExpr
+                     | expr '+' expr                 #addExpr 
+                     | expr '(' argList ')'          #fnCallExpr
+                     | '(' paramList ')' '=>' block  #lambdaExpr ;
+                argList : (expr (',' expr)*)? ;
+                paramList : (ID (',' ID)*)? ;
+                block : '{' stmt* '}' ;
                 """);
             Assert.Equal("""
-                public partial record Command(Expression Expression) : IAstNode;
+                public abstract partial record Statement : IAstNode;
+                    public partial record AssignmentStatement(Expression LeftExpression, Expression RightExpression) : Statement;
+                    public partial record ExpressionStatement(Expression Expression) : Statement;
+                    public partial record BlockStatement(Block Block) : Statement;
                 public abstract partial record Expression : IAstNode;
-                    public partial record MultiplyExpression(Expression LeftExpression, Expression RightExpression) : Expression;
+                    public partial record AtomicExpression(string? Identifier, string? Number, string? StringLiteral) : Expression;
                     public partial record AddExpression(Expression LeftExpression, Expression RightExpression) : Expression;
-                    public abstract partial record AtomicExpression : Expression;
-                        public partial record VariableReferenceExpression(string Identifier) : AtomicExpression;
-                        public partial record NumericLiteralExpression(string Number) : AtomicExpression;
-                        public partial record StringLiteralExpression(string StringLiteral) : AtomicExpression;
+                    public partial record FunctionCallExpression(Expression Expression, ArgumentList ArgumentList) : Expression;
+                    public partial record LambdaExpression(ParameterList ParameterList, Block Block) : Expression;
+                public partial record ArgumentList(IList<Expression> Expressions) : IAstNode;
+                public partial record ParameterList(IList<string> Identifiers) : IAstNode;
+                public partial record Block(IList<Statement> Statements) : IAstNode;
                 """,
                 ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
         }

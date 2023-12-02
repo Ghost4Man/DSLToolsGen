@@ -49,6 +49,12 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
             {{_ => VisitAll(astModel.NodeClasses, "")}}
 
             {{_ => Visit(astModel.AstBuilder)}}
+
+            file static class Extensions
+            {
+                public static TOut Accept<TIn, TOut>(this TIn parseTreeNode, Func<TIn, TOut> visitFn)
+                    => visitFn(parseTreeNode);
+            }
             """);
     }
 
@@ -95,14 +101,14 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
             TokenTextPropertyModel(_, var label, var token, var opt) =>
                 $"context.{tokenAccessor(label, token)}{(opt ? "?" : "")}.{tokenTextAccessor(label)}",
             TokenTextListPropertyModel(_, var label, var token) =>
-                $"Array.ConvertAll(context.{tokenAccessor(label, token)}, t => t.{tokenTextAccessor(label)})",
+                $"Array.ConvertAll(context.{tokenAccessor(label?.Prepend("_"), token)}, t => t.{tokenTextAccessor(label)})",
             OptionalTokenPropertyModel(_, var label, var token) =>
                 $"context.{tokenAccessor(label, token)} != null",
             NodeReferencePropertyModel(_, var label, var nodeClass, var opt) =>
-                opt ? $"context.{ruleContextAccessor(label, nodeClass)}?.Accept(this)"
-                    : $"Visit(context.{ruleContextAccessor(label, nodeClass)})",
+                opt ? $"context.{ruleContextAccessor(label, nodeClass)}?.Accept(Visit{nodeClass.SourceContextName})"
+                    : $"Visit{nodeClass.SourceContextName}(context.{ruleContextAccessor(label, nodeClass)})",
             NodeReferenceListPropertyModel(_, var label, var nodeClass) =>
-                $"VisitAll(context.{ruleContextAccessor(label, nodeClass)})",
+                $"context.{ruleContextAccessor(label?.Prepend("_"), nodeClass)}.Select(Visit{nodeClass.SourceContextName}).ToList()",
         };
 
         string tokenAccessor(string? label, ResolvedTokenRef token) => label ?? (token.Name + "()");

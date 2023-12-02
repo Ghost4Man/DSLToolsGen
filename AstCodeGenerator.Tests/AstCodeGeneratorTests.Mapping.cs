@@ -159,14 +159,14 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             {
                 public override Assignment VisitAssignment(FooParser.AssignmentContext context)
                 {
-                    var Lvalue = Visit(context.lvalue());
-                    var Expression = Visit(context.expr());
+                    var Lvalue = VisitLvalue(context.lvalue());
+                    var Expression = VisitExpr(context.expr());
                     return new Assignment(Lvalue, Expression);
                 }
 
                 public override Lvalue VisitLvalue(FooParser.LvalueContext context)
                 {
-                    var Expression = Visit(context.expr());
+                    var Expression = VisitExpr(context.expr());
                     var Identifier = context.ID().GetText();
                     return new Lvalue(Expression, Identifier);
                 }
@@ -191,14 +191,14 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             {
                 public override Assignment VisitAssignment(FooParser.AssignmentContext context)
                 {
-                    var Lvalue = Visit(context.lvalue());
-                    var Expression = context.expr()?.Accept(this);
+                    var Lvalue = VisitLvalue(context.lvalue());
+                    var Expression = context.expr()?.Accept(VisitExpr);
                     return new Assignment(Lvalue, Expression);
                 }
 
                 public override Lvalue VisitLvalue(FooParser.LvalueContext context)
                 {
-                    var Expression = context.expr()?.Accept(this);
+                    var Expression = context.expr()?.Accept(VisitExpr);
                     var Identifier = context.ID().GetText();
                     return new Lvalue(Expression, Identifier);
                 }
@@ -222,9 +222,9 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             {
                 public override IfExpression VisitIfExpr(FooParser.IfExprContext context)
                 {
-                    var Expression1 = Visit(context.expr(0));
-                    var Expression2 = Visit(context.expr(1));
-                    var Expression3 = context.expr(2)?.Accept(this);
+                    var Expression1 = VisitExpr(context.expr(0));
+                    var Expression2 = VisitExpr(context.expr(1));
+                    var Expression3 = context.expr(2)?.Accept(VisitExpr);
                     return new IfExpression(Expression1, Expression2, Expression3);
                 }
             
@@ -249,7 +249,7 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
                 {
                     var Conditions = Array.ConvertAll(context._conds, VisitExpr);
                     var Then = Array.ConvertAll(context._then, VisitExpr);
-                    var ElseExpression = context.elseExpr?.Accept(this);
+                    var ElseExpression = context.elseExpr?.Accept(VisitExpr);
                     return new IfExpression(Conditions, Then, ElseExpression);
                 }
             
@@ -272,9 +272,9 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             {
                 public override IfExpression VisitIfExpr(FooParser.IfExprContext context)
                 {
-                    var If = Visit(context.@if);
-                    var Do = Visit(context.@do);
-                    var Else = context.@else?.Accept(this);
+                    var If = VisitExpr(context.@if);
+                    var Do = VisitExpr(context.@do);
+                    var Else = context.@else?.Accept(VisitExpr);
                     return new IfExpression(If, Do, Else);
                 }
             
@@ -303,13 +303,13 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
                 public override AssignmentStatement VisitAssignmentStmt(FooParser.AssignmentStmtContext context)
                 {
                     var Identifier = context.ID().GetText();
-                    var Expression = Visit(context.expr());
+                    var Expression = VisitExpr(context.expr());
                     return new AssignmentStatement(Identifier, Expression);
                 }
 
                 public override PrintStatement VisitPrintStmt(FooParser.PrintStmtContext context)
                 {
-                    var Expression = Visit(context.expr());
+                    var Expression = VisitExpr(context.expr());
                     return new PrintStatement(Expression);
                 }
             

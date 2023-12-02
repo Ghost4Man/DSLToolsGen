@@ -30,7 +30,7 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
      */
 
     [Fact]
-    public void given_1_empty_rule_ー_generates_prolog_and_empty_record_and_ASTBuilder()
+    public void given_1_empty_rule_ー_generates_prolog_and_empty_record_and_ASTBuilder_and_Extensions_class()
     {
         AstCodeGenerator g = GetGeneratorForGrammar($$"""
             {{grammarProlog}}
@@ -46,6 +46,12 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
                 {
                     return new Break();
                 }
+            }
+
+            file static class Extensions
+            {
+                public static TOut Accept<TIn, TOut>(this TIn parseTreeNode, Func<TIn, TOut> visitFn)
+                    => visitFn(parseTreeNode);
             }
             """,
             ModelToString(g.GenerateAstCodeModel()).TrimEnd());

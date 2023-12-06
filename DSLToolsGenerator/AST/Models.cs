@@ -2,7 +2,7 @@
 
 using VisitorPatternGenerator;
 
-namespace DSLToolsGenerator.Models;
+namespace DSLToolsGenerator.AST.Models;
 
 public partial interface IModel;
 

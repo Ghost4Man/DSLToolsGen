@@ -4,9 +4,9 @@ using System.Text.RegularExpressions;
 using Antlr4Ast;
 using Humanizer;
 
-using DSLToolsGenerator.Models;
+using DSLToolsGenerator.AST.Models;
 
-namespace DSLToolsGenerator;
+namespace DSLToolsGenerator.AST;
 
 public record Diagnostic(DiagnosticSeverity Severity, string Message)
 {

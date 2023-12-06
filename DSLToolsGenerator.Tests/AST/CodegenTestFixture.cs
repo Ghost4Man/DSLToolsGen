@@ -1,4 +1,4 @@
-﻿namespace DSLToolsGenerator.Tests;
+﻿namespace DSLToolsGenerator.AST.Tests;
 
 public abstract class CodegenTestFixture(ITestOutputHelper testOutput)
 {

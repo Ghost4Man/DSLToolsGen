@@ -1,6 +1,6 @@
-﻿using DSLToolsGenerator.Models;
+﻿using DSLToolsGenerator.AST.Models;
 
-namespace DSLToolsGenerator;
+namespace DSLToolsGenerator.AST;
 
 public class CSharpModelWriter : CodeGeneratingModelVisitor
 {

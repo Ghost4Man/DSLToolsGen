@@ -4,7 +4,7 @@ using System.Diagnostics.CodeAnalysis;
 
 using Antlr4Ast;
 
-using DSLToolsGenerator;
+using DSLToolsGenerator.AST;
 
 var grammarArg = new Argument<FileInfo>("grammar-file",
     "input ANTLR4 grammar file path (.g4)");

@@ -1,6 +1,6 @@
-﻿using static DSLToolsGenerator.CSharpModelWriter;
+﻿using static DSLToolsGenerator.AST.CSharpModelWriter;
 
-namespace DSLToolsGenerator.Tests;
+namespace DSLToolsGenerator.AST.Tests;
 
 public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFixture(testOutput)
 {

@@ -1,10 +1,13 @@
 ﻿using System.CommandLine;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 
 using Antlr4Ast;
 
 using DSLToolsGenerator.AST;
+using DSLToolsGenerator.SyntaxHighlighting;
+
+[assembly: InternalsVisibleTo("DSLToolsGenerator.Tests")]
 
 var grammarArg = new Argument<FileInfo>("grammar-file",
     "input ANTLR4 grammar file path (.g4)");
@@ -15,19 +18,21 @@ var outputArg = new Option<FileInfo?>(["-o", "--output"],
 var watchOption = new Option<bool>("--watch",
     "watch the input grammar for changes and regenerate when changed");
 
+var syntaxHighlightingVerboseOption = new Option<bool>("--verbose",
+    "print more details about how each rule was translated into a TM pattern/regex");
+
 var generateAstCommand = new Command("ast",
     "generates C# code of a syntax tree data structure") { grammarArg, outputArg, watchOption };
-generateAstCommand.SetHandler(async (gf, of, w) => {
-        await WithWatchMode(w, gf, () => GenerateAstCodeFromGrammarFile(gf, of));
-    },
+generateAstCommand.SetHandler((gf, of, w) =>
+    WithWatchMode(w, gf, () => GenerateAstCodeFromGrammarFile(gf, of)),
     grammarArg, outputArg, watchOption);
 
 var generateTextMateGrammarCommand = new Command("tmLanguage",
-    "generates a TextMate grammar for syntax highlighting") { grammarArg, outputArg, watchOption };
-generateTextMateGrammarCommand.SetHandler(async (gf, of, w) => {
-        await WithWatchMode(w, gf, () => GenerateTextMateGrammar(gf, of));
-    },
-    grammarArg, outputArg, watchOption);
+    "generates a TextMate grammar for syntax highlighting") {
+    grammarArg, outputArg, watchOption, syntaxHighlightingVerboseOption };
+generateTextMateGrammarCommand.SetHandler((gf, of, w, v) =>
+    WithWatchMode(w, gf, () => GenerateTextMateGrammar(gf, of, v)),
+    grammarArg, outputArg, watchOption, syntaxHighlightingVerboseOption);
 
 var generateCommand = new Command("generate",
     "generates a (part of a) tool for the language described by an ANTLR4 grammar") {
@@ -60,7 +65,10 @@ Task<int> GenerateAstCodeFromGrammarFile(FileInfo grammarFile, FileInfo? outputF
     var model = generator.GenerateAstCodeModel();
     if (outputFile != null)
     {
-        using var sw = new StreamWriter(outputFile.FullName);
+        if (!TryOpenWrite(outputFile, out Stream? stream))
+            return ExitCode(1);
+
+        using var sw = new StreamWriter(stream);
         var modelWriter = new CSharpModelWriter(sw);
         modelWriter.Visit(model);
     }
@@ -111,16 +119,75 @@ Dictionary<string, object?> GetGrammarOptionsAsDictionary(Grammar grammar)
     => grammar.Options.SelectMany(o => o.Items)
         .ToDictionary(o => o.Name, o => o.Value);
 
-async Task<int> GenerateTextMateGrammar(FileInfo grammarFile, FileInfo? outputFile)
+async Task<int> GenerateTextMateGrammar(FileInfo grammarFile, FileInfo? outputFile, bool verbose)
 {
-    string antlrHelperJarFullPath = Path.Combine(GetExeDirectory(), "antlrhelper.jar");
-    var process = Process.Start(new ProcessStartInfo(
-        "cmd", ["/C", "java", "-jar", antlrHelperJarFullPath, grammarFile.FullName,
-            (outputFile != null ? ">" + outputFile.FullName : "")
-            // TODO: "--output", outputFile.FullName
-        ]));
-    await process.WaitForExitAsync();
-    return process.ExitCode;
+    if (!TryParseGrammarAndReportErrors(grammarFile, out Grammar? grammar, GrammarKind.Lexer))
+        return 1;
+
+    Stream? fileStream = null;
+    if (outputFile != null && !TryOpenWrite(outputFile, out fileStream))
+        return 1;
+
+    await using (fileStream)
+    {
+        await ConvertGrammarToTextMateLanguage(grammar, verbose)(
+            fileStream ?? Console.OpenStandardOutput());
+    }
+    return 0;
+}
+
+bool TryOpenWrite(FileInfo file, [NotNullWhen(true)] out Stream? stream)
+{
+    try
+    {
+        stream = file.OpenWrite();
+        return true;
+    }
+    catch (IOException ex)
+    {
+        Console.Error.WriteLine($"Error while opening file '{file.FullName}' for writing ({ex.GetType().Name}): {ex.Message}");
+        stream = null;
+        return false;
+    }
+}
+
+Func<Stream, Task> ConvertGrammarToTextMateLanguage(Grammar grammar, bool verbose)
+{
+    if (grammar.LexerRules.Count == 0)
+    {
+        Console.Error.WriteLine("Warning: no lexer rules found");
+    }
+
+    var generator = new TmLanguageGenerator(grammar, diagnosticHandler: d => {
+        Console.Error.WriteLine(d);
+    });
+
+    if (verbose)
+    {
+        const string GREEN = "\u001b[32m";
+        const string YELLOW = "\u001b[33m";
+        const string RESET = "\u001b[0m";
+
+        foreach (Rule rule in grammar.LexerRules)
+        {
+            Console.Error.WriteLine($"rule {rule.Name}:");
+
+            if (!generator.ShouldHighlight(rule))
+                Console.Error.WriteLine("  (skipped)");
+            else
+            {
+                for (int i = 0; i < rule.AlternativeList.Items.Count; i++)
+                {
+                    Alternative? alt = rule.AlternativeList.Items[i];
+                    Console.Error.WriteLine($"  {i}. {GREEN}{alt}{RESET}");
+                    Console.Error.WriteLine($"     regex: {YELLOW}{generator.MakeRegex(alt)}{RESET}");
+                }
+            }
+            Console.Error.WriteLine();
+        }
+    }
+
+    return generator.GenerateTextMateLanguageJsonAsync;
 }
 
 async Task<TResult> WithWatchMode<TResult>(bool watchModeEnabled, FileInfo watchedFile, Func<Task<TResult>> action)
@@ -133,11 +200,11 @@ async Task<TResult> WithWatchMode<TResult>(bool watchModeEnabled, FileInfo watch
     do
     {
         result = await action();
+        // TODO: this call is actually synchronous
         if (watcher.WaitForChanged(WatcherChangeTypes.All).ChangeType is not WatcherChangeTypes.Changed)
             break;
         await Task.Delay(200);
     }
-    // TODO: this call is actually synchronous?
     while (true);
     return result;
 }

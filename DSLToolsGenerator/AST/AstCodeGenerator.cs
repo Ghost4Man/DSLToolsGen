@@ -8,12 +8,6 @@ using DSLToolsGenerator.AST.Models;
 
 namespace DSLToolsGenerator.AST;
 
-public record Diagnostic(DiagnosticSeverity Severity, string Message)
-{
-    public override string ToString() => $"{Severity}: {Message}";
-}
-public enum DiagnosticSeverity { Info, Warning, Error }
-
 public partial class AstCodeGenerator
 {
     readonly Grammar grammar;
@@ -374,33 +368,4 @@ public partial class AstCodeGenerator
 
     [GeneratedRegex(@"([A-Z]+(?![a-z])|[A-Z][a-z]+|[0-9]+|[a-z]+)")]
     private static partial Regex WordSplitterRegex();
-}
-
-static class RuleRefExtensions
-{
-    public static Rule? GetRuleOrNull(this RuleRef ruleRef, Grammar grammar)
-    {
-        return grammar.TryGetRule(ruleRef.Name, out Rule? rule) ? rule : null;
-    }
-}
-
-static class TokenRefExtensions
-{
-    public static bool IsMany(this SyntaxElement element)
-        => element.Suffix is SuffixKind.Plus or SuffixKind.Star
-            or SuffixKind.PlusGreedy or SuffixKind.StarGreedy;
-
-    public static bool IsOptional(this SyntaxElement element)
-        => element.Suffix is SuffixKind.Optional or SuffixKind.OptionalGreedy;
-}
-
-static class SyntaxElementExtensions
-{
-    // Deconstruct extensions for pattern matching:
-
-    public static void Deconstruct(this Block block, out IReadOnlyList<Alternative> alts)
-        => alts = block.Items;
-
-    public static void Deconstruct(this Alternative alt, out IReadOnlyList<SyntaxElement> elements)
-        => elements = alt.Elements;
 }

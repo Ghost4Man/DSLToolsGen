@@ -24,7 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../AstCodeGenerator/AstCodeGenerator.csproj" />
+    <ProjectReference Include="..\DSLToolsGenerator\DSLToolsGenerator.csproj" />
   </ItemGroup>
 
   <ItemGroup>

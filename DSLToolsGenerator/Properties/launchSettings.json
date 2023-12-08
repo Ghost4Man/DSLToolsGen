@@ -2,7 +2,7 @@
   "profiles": {
     "AstCodeGenerator": {
       "commandName": "Project",
-      "commandLineArgs": "generate ./Samples/ExampleParser.g4 ast",
+      "commandLineArgs": "generate ast ./Samples/ExampleParser.g4",
       "workingDirectory": "$(ProjectDir)"
     }
   }

@@ -118,10 +118,10 @@ static class TokenRefExtensions
 
     public static bool IsMany(this SyntaxElement element)
         => element.Suffix is SuffixKind.Plus or SuffixKind.Star
-            or SuffixKind.PlusGreedy or SuffixKind.StarGreedy;
+            or SuffixKind.PlusNonGreedy or SuffixKind.StarNonGreedy;
 
     public static bool IsOptional(this SyntaxElement element)
-        => element.Suffix is SuffixKind.Optional or SuffixKind.OptionalGreedy;
+        => element.Suffix is SuffixKind.Optional or SuffixKind.OptionalNonGreedy;
 }
 
 static class SyntaxElementExtensions

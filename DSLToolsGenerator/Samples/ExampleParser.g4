@@ -11,14 +11,13 @@ stat : ID '=' expr ';' 	    #assignmentStatement
     | expr ';'              #exprStatement
     | 'return' expr? ';'    #returnStatement
     | fnDefinition          #fnDefStatement
-    //| 'if' cond+=expr then+=block ('elif' cond+=expr then+=block)* ('else' else=block)? #ifStatement
-    //| block               #blockStatement
+    | 'if' cond+=expr then+=block ('elif' cond+=expr then+=block)* ('else' else=block)? #ifStatement
+    | block                 #blockStatement
     ;
 
 fnDefinition : public_='public'? 'function' ID '(' parameterList ')' (fnBody | ';') ;
 
-fnBody : '{' '}' ;
-//fnBody : '{' stat* '}' ;
+fnBody : '{' stat* '}' ;
 
 parameter : ID ;
 
@@ -30,10 +29,10 @@ expr : ID                   #idExpr
     | INT                   #intExpr
     | STRING_LITERAL        #strExpr
     | CHAR_LITERAL          #charLitExpr
-    // | target=expr '(' (args+=expr (',' args+=expr)*)? ')'  #funcCallExpr
-    // | expr '+' expr         #addExpr
-    // | 'not' expr            #notExpr
-    // | expr 'and' expr       #andExpr
-    // | expr 'or' expr        #orExpr
-    // | expr 'if' expr        #conditionalExpr
+    | target=expr '(' (args+=expr (',' args+=expr)*)? ')'  #funcCallExpr
+    | expr '+' expr         #addExpr
+    | 'not' expr            #notExpr
+    | expr 'and' expr       #andExpr
+    | expr 'or' expr        #orExpr
+    | expr 'if' expr        #conditionalExpr
     ;

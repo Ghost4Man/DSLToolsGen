@@ -140,7 +140,7 @@ bool TryOpenWrite(FileInfo file, [NotNullWhen(true)] out Stream? stream)
 {
     try
     {
-        stream = file.OpenWrite();
+        stream = file.Create(); // create or replace if it exists
         return true;
     }
     catch (IOException ex)

@@ -5,12 +5,22 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 using Antlr4Ast;
+
+using DSLToolsGenerator.AST.Models;
+using DSLToolsGenerator.SyntaxHighlighting.Models;
+
 using GrammarAST = Antlr4Ast.SyntaxNode;
 
 namespace DSLToolsGenerator.SyntaxHighlighting;
 
-public partial class TmLanguageGenerator(Grammar grammar, Action<Diagnostic> diagnosticHandler)
+public partial class TmLanguageGenerator(
+    Grammar grammar,
+    Action<Diagnostic> diagnosticHandler,
+    SyntaxHighlightingConfiguration config)
 {
+    public TmLanguageGenerator(Grammar grammar, Action<Diagnostic> diagnosticHandler)
+        : this(grammar, diagnosticHandler, new()) { }
+
     readonly JsonSerializerOptions jsonOptions = new() {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -34,14 +44,48 @@ public partial class TmLanguageGenerator(Grammar grammar, Action<Diagnostic> dia
         // TODO: reorder and/or transform the rules to fix the mismatch between
         //       ANTLR's longest-match and TextMate's leftmost-match behavior
 
+        List<Pattern> patterns = [];
+
+        foreach (RuleConflict conflict in config.RuleConflicts)
+        {
+            if (FindRuleOrError(conflict.RuleNames.First) is not Rule rule1
+                || FindRuleOrError(conflict.RuleNames.Second) is not Rule rule2)
+                continue;
+
+            patterns.Add(new Pattern(
+                Comment: $"rule conflict ({rule1.Name}, {rule2.Name}) resolver pattern",
+                Match: lookahead(rule1, "L1") + lookahead(rule2, "L2") +
+                    @"(?:(?<L1match>\k<L1>)(?!.+?\k<restL2>$)|(?<L2match>\k<L2>))",
+                Captures: new() {
+                    ["5"] = new Capture(GetScopeNameForRule(rule1), null),
+                    ["6"] = new Capture(GetScopeNameForRule(rule2), null),
+                }
+            ));
+
+            string lookahead(Rule rule, string groupName)
+                => $@"(?=(?<{groupName}>{MakeRegex(rule, standalone: false)})(?<rest{groupName}>.*)$)";
+        }
+
+        patterns.AddRange(rulesToHighlight.Select(r => new Pattern(
+            Comment: $"rule {r.Name}",
+            Match: MakeRegex(r),
+            Name: $"{GetScopeNameForRule(r)}.{languageName.ToLowerInvariant()}")));
+
         return new TmLanguageDocument(
             Name: languageName,
             ScopeName: $"source.{languageName.ToLowerInvariant()}",
-            Patterns: rulesToHighlight.Select(r => new Pattern(
-                Comment: $"rule {r.Name}",
-                Match: MakeRegex(r),
-                Name: $"{GetScopeNameForRule(r)}.{languageName.ToLowerInvariant()}")).ToList()
+            Patterns: patterns
         );
+    }
+
+    Rule? FindRuleOrError(string ruleName)
+    {
+        if (!grammar.TryGetRule(ruleName, out Rule? rule))
+        {
+            diagnosticHandler(new(DiagnosticSeverity.Error,
+                $"could not find a rule named '{ruleName}'"));
+        }
+        return rule;
     }
 
     [GeneratedRegex("""^(?:(ID(ENT(IFIER)?)?|NAME|VAR(IABLE)?(_?NAME)?|.+_NAME|KEY|PROP(ERTY)?))$""")]
@@ -89,12 +133,15 @@ public partial class TmLanguageGenerator(Grammar grammar, Action<Diagnostic> dia
             _ => true
         });
 
-    internal string MakeRegex(Rule rule, bool isInRuleRef = false)
+    /// <summary>
+    /// Returns a Oniguruma regex pattern for matching the specified lexer rule.
+    /// </summary>
+    internal string MakeRegex(Rule rule, bool standalone = true)
     {
         var alts = rule.AlternativeList.Items.Where(x => x != null);
         var block = alts.Select(MakeRegex)
             .MakeString("(?:", "|", ")");
-        return (!isInRuleRef && RuleIsKeyword(rule))
+        return (standalone && RuleIsKeyword(rule))
             ? $@"\b{block}\b"
             : block;
     }
@@ -114,7 +161,7 @@ public partial class TmLanguageGenerator(Grammar grammar, Action<Diagnostic> dia
             CharRange r => $"[{r.From}-{r.To}]", //$"[\\u{a:04X}-\\u{b:04X}]",
             DotElement => ".",
             TokenRef(string name) tr =>
-                tr.GetRuleOrNull(grammar) is Rule r ? MakeRegex(r, isInRuleRef: true) :
+                tr.GetRuleOrNull(grammar) is Rule r ? MakeRegex(r, standalone: false) :
                 tr.Name == "EOF" ? @"\z" :
                 regexInlineComment($"unknown ref {name} at line {tr.Span.Begin.Line}"),
             Literal(string value) => EscapeAsRegex(value),

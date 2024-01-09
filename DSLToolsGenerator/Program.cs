@@ -1,13 +1,19 @@
 ﻿using System.CommandLine;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
+using Humanizer;
 using Antlr4Ast;
 
 using DSLToolsGenerator.AST;
 using DSLToolsGenerator.SyntaxHighlighting;
+using DSLToolsGenerator.SyntaxHighlighting.Models;
 
 [assembly: InternalsVisibleTo("DSLToolsGenerator.Tests")]
+
+const string DefaultConfigFileName = "dtg.json";
 
 var grammarArg = new Argument<FileInfo>("grammar-file",
     "input ANTLR4 grammar file path (.g4)");
@@ -22,14 +28,15 @@ var syntaxHighlightingVerboseOption = new Option<bool>("--verbose",
     "print more details about how each rule was translated into a TM pattern/regex");
 
 var generateAstCommand = new Command("ast",
-    "generates C# code of a syntax tree data structure") { grammarArg, outputArg, watchOption };
+    "generates C# code of a syntax tree data structure")
+    { grammarArg, outputArg, watchOption };
 generateAstCommand.SetHandler((gf, of, w) =>
     WithWatchMode(w, gf, () => GenerateAstCodeFromGrammarFile(gf, of)),
     grammarArg, outputArg, watchOption);
 
 var generateTextMateGrammarCommand = new Command("tmLanguage",
-    "generates a TextMate grammar for syntax highlighting") {
-    grammarArg, outputArg, watchOption, syntaxHighlightingVerboseOption };
+    "generates a TextMate grammar for syntax highlighting")
+    { grammarArg, outputArg, watchOption, syntaxHighlightingVerboseOption };
 generateTextMateGrammarCommand.SetHandler((gf, of, w, v) =>
     WithWatchMode(w, gf, () => GenerateTextMateGrammar(gf, of, v)),
     grammarArg, outputArg, watchOption, syntaxHighlightingVerboseOption);
@@ -95,6 +102,16 @@ bool TryParseGrammarAndReportErrors(FileInfo grammarFile,
         return false;
     }
 
+    if (grammar.ErrorMessages.Count is > 0 and int errorCount)
+    {
+        Console.Error.WriteLine($"Found {"error".ToQuantity(errorCount)} while parsing {grammarFile.Name}:");
+        foreach (var msg in grammar.ErrorMessages)
+        {
+            Console.Error.WriteLine(msg);
+            return false;
+        }
+    }
+
     if (expectedGrammarKind.HasValue && grammar.Kind != expectedGrammarKind)
     {
         Console.Error.WriteLine(
@@ -103,15 +120,6 @@ bool TryParseGrammarAndReportErrors(FileInfo grammarFile,
         return false;
     }
 
-    if (grammar.ErrorMessages.Count is > 0 and int errorCount)
-    {
-        Console.Error.WriteLine($"Found {errorCount} errors while parsing {grammarFile.Name}:");
-        foreach (var msg in grammar.ErrorMessages)
-        {
-            Console.Error.WriteLine(msg);
-            return false;
-        }
-    }
     return true;
 }
 
@@ -158,9 +166,11 @@ Func<Stream, Task> ConvertGrammarToTextMateLanguage(Grammar grammar, bool verbos
         Console.Error.WriteLine("Warning: no lexer rules found");
     }
 
-    var generator = new TmLanguageGenerator(grammar, diagnosticHandler: d => {
-        Console.Error.WriteLine(d);
-    });
+	Configuration? config = LoadConfiguration();
+
+	var generator = new TmLanguageGenerator(grammar,
+        diagnosticHandler: Console.Error.WriteLine,
+        config?.SyntaxHighlighting ?? new());
 
     if (verbose)
     {
@@ -213,3 +223,28 @@ Task<int> ExitCode(int code) => Task.FromResult(code);
 
 // Gets the path of the directory that contains this program
 string GetExeDirectory() => Path.GetDirectoryName(typeof(Program).Assembly.Location)!;
+
+static Configuration? LoadConfiguration()
+{
+	JsonSerializerOptions? configDeserializationOptions = new() {
+		AllowTrailingCommas = true,
+		ReadCommentHandling = JsonCommentHandling.Allow,
+		UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+	};
+
+	Configuration? config = null;
+	try
+    {
+		using Stream stream = File.OpenRead(DefaultConfigFileName);
+		config = JsonSerializer.Deserialize<Configuration>(stream, configDeserializationOptions);
+    }
+    catch (FileNotFoundException) { }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"error while reading config file: {ex.GetType().Name}: {ex.Message}");
+    }
+
+    return config;
+}
+
+record class Configuration(SyntaxHighlightingConfiguration SyntaxHighlighting);

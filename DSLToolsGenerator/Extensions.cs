@@ -111,6 +111,36 @@ static class RuleRefExtensions
         => grammar.TryGetRule(ruleRef.Name, out Rule? rule) ? rule : null;
 }
 
+static class RuleExtensions
+{
+    public static bool IsCaseInsensitive(this Rule rule, Grammar grammar)
+    {
+        bool? ruleCaseInsensitivity = rule.Options.FindBool("caseInsensitive");
+        bool? grammarCaseInsensitivity = grammar.Options.FindBool("caseInsensitive");
+        return ruleCaseInsensitivity ?? grammarCaseInsensitivity ?? false;
+    }
+}
+
+static class OptionListExtensions
+{
+    public static OptionSpec? Find(this IEnumerable<OptionSpecList> optionLists, string optionName)
+    {
+        foreach (var optionList in optionLists)
+        {
+            if (optionList.Items.LastOrDefault(o => o.Name == optionName) is OptionSpec option)
+                return option;
+        }
+        return null;
+    }
+
+    public static bool? FindBool(this IEnumerable<OptionSpecList> optionLists, string optionName)
+    {
+        return Find(optionLists, optionName)?.Value is string value
+            ? value is "true" or "True"
+            : null;
+    }
+}
+
 static class TokenRefExtensions
 {
     public static Rule? GetRuleOrNull(this TokenRef tokenRef, Grammar grammar)

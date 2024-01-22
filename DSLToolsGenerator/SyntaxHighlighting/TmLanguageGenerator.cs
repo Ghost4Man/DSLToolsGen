@@ -140,7 +140,7 @@ public partial class TmLanguageGenerator(
     {
         var alts = rule.AlternativeList.Items.Where(x => x != null);
         var block = alts.Select(MakeRegex)
-            .MakeString("(?:", "|", ")");
+            .MakeString(rule.IsCaseInsensitive(grammar) ? "(?i:" : "(?:", "|", ")");
         return (standalone && RuleIsKeyword(rule))
             ? $@"\b{block}\b"
             : block;

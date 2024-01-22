@@ -32,6 +32,7 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
     [InlineData(@"~[a-zA-Z]+", @"[^a-zA-Z]+")]
     [InlineData(@"~('-' | ']' | '^')", @"[^\-\]\^]")]
     [InlineData(@"~([0-9] | '#' | '+')", @"[^0-9#\+]")]
+    [InlineData(@"'%' (~'%' | '%%')* '%'", @"%(?:[^%]|%%)*%")] // escape by doubling, e.g. `%(a * b = 10%%)%`
     public void MakeRegex_ー_generates_correct_regex(string antlrRuleBody, string expectedRegex)
     {
         (TmLanguageGenerator gen, var grammar) = GetTmLanguageGeneratorForGrammar(

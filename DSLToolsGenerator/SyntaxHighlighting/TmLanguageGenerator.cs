@@ -164,6 +164,7 @@ public partial class TmLanguageGenerator(
                 tr.GetRuleOrNull(grammar) is Rule r ? MakeRegex(r, standalone: false) :
                 tr.Name == "EOF" ? @"\z" :
                 regexInlineComment($"unknown ref {name} at line {tr.Span.Begin.Line}"),
+            Literal(string value) { IsNot: true } => $"[^{EscapeAsRegex(value)}]",
             Literal(string value) => EscapeAsRegex(value),
             LexerCharSet set => $"[{(set.IsNot ? "^" : "")}{set.Value}]",
             //_ => throw new NotImplementedException($"{node.GetType().Name} {node}: not yet implemented"),

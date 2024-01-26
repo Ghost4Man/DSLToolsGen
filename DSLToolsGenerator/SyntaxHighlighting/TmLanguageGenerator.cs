@@ -48,9 +48,17 @@ public partial class TmLanguageGenerator(
 
         foreach (RuleConflict conflict in config.RuleConflicts)
         {
-            if (FindRuleOrError(conflict.RuleNames.First) is not Rule rule1
-                || FindRuleOrError(conflict.RuleNames.Second) is not Rule rule2)
+            if (conflict.RuleNames is not [string ruleName1, string ruleName2])
+            {
+                diagnosticHandler(new(DiagnosticSeverity.Error, "config option " +
+                    $"{nameof(config.RuleConflicts)}.{nameof(conflict.RuleNames)}" +
+                    " currently only supports 2 rules"));
                 continue;
+            }
+
+            if (FindRuleOrError(ruleName1) is not Rule rule1
+                || FindRuleOrError(ruleName2) is not Rule rule2)
+                continue; // an error diagnostic was produced by `FindRuleOrError`
 
             patterns.Add(new Pattern(
                 Comment: $"rule conflict ({rule1.Name}, {rule2.Name}) resolver pattern",

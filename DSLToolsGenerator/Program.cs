@@ -7,6 +7,7 @@ using System.Text.Json.Serialization;
 using Humanizer;
 using Antlr4Ast;
 
+using DSLToolsGenerator;
 using DSLToolsGenerator.AST;
 using DSLToolsGenerator.SyntaxHighlighting;
 using DSLToolsGenerator.SyntaxHighlighting.Models;
@@ -166,9 +167,9 @@ Func<Stream, Task> ConvertGrammarToTextMateLanguage(Grammar grammar, bool verbos
         Console.Error.WriteLine("Warning: no lexer rules found");
     }
 
-	Configuration? config = LoadConfiguration();
+    Configuration? config = LoadConfiguration();
 
-	var generator = new TmLanguageGenerator(grammar,
+    var generator = new TmLanguageGenerator(grammar,
         diagnosticHandler: Console.Error.WriteLine,
         config?.SyntaxHighlighting ?? new());
 
@@ -226,17 +227,17 @@ string GetExeDirectory() => Path.GetDirectoryName(typeof(Program).Assembly.Locat
 
 static Configuration? LoadConfiguration()
 {
-	JsonSerializerOptions? configDeserializationOptions = new() {
-		AllowTrailingCommas = true,
-		ReadCommentHandling = JsonCommentHandling.Allow,
-		UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
-	};
+    JsonSerializerOptions? configDeserializationOptions = new() {
+        AllowTrailingCommas = true,
+        ReadCommentHandling = JsonCommentHandling.Allow,
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+    };
 
-	Configuration? config = null;
-	try
+    Configuration? config = null;
+    try
     {
-		using Stream stream = File.OpenRead(DefaultConfigFileName);
-		config = JsonSerializer.Deserialize<Configuration>(stream, configDeserializationOptions);
+        using Stream stream = File.OpenRead(DefaultConfigFileName);
+        config = JsonSerializer.Deserialize<Configuration>(stream, configDeserializationOptions);
     }
     catch (FileNotFoundException) { }
     catch (Exception ex)
@@ -247,4 +248,7 @@ static Configuration? LoadConfiguration()
     return config;
 }
 
-record class Configuration(SyntaxHighlightingConfiguration SyntaxHighlighting);
+namespace DSLToolsGenerator
+{
+    public record class Configuration(SyntaxHighlightingConfiguration SyntaxHighlighting);
+}

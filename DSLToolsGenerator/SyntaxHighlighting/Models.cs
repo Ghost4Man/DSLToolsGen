@@ -2,7 +2,7 @@
 
 public record SyntaxHighlightingConfiguration
 {
-    public IList<RuleConflict> RuleConflicts { get; init; } = [];
+    public IReadOnlyList<RuleConflict> RuleConflicts { get; init; } = [];
 }
 
-public record RuleConflict((string First, string Second) RuleNames);
+public record RuleConflict(IReadOnlyList<string> RuleNames);

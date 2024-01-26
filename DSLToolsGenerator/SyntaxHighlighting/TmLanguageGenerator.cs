@@ -63,12 +63,12 @@ public partial class TmLanguageGenerator(
             ));
 
             string lookahead(Rule rule, string groupName)
-                => $@"(?=(?<{groupName}>{MakeRegex(rule, standalone: false)})(?<rest{groupName}>.*)$)";
+                => $@"(?=(?<{groupName}>{MakeRegex(rule, parentRule: null)})(?<rest{groupName}>.*)$)";
         }
 
         patterns.AddRange(rulesToHighlight.Select(r => new Pattern(
             Comment: $"rule {r.Name}",
-            Match: MakeRegex(r),
+            Match: MakeRegex(r, parentRule: null),
             Name: $"{GetScopeNameForRule(r)}.{languageName.ToLowerInvariant()}")));
 
         return new TmLanguageDocument(
@@ -136,33 +136,47 @@ public partial class TmLanguageGenerator(
     /// <summary>
     /// Returns a Oniguruma regex pattern for matching the specified lexer rule.
     /// </summary>
-    internal string MakeRegex(Rule rule, bool standalone = true)
+    internal string MakeRegex(Rule rule, Rule? parentRule)
     {
+        bool standalone = parentRule is null;
         var alts = rule.AlternativeList.Items.Where(x => x != null);
-        var block = alts.Select(MakeRegex)
-            .MakeString(rule.IsCaseInsensitive(grammar) ? "(?i:" : "(?:", "|", ")");
+        var block = alts.Select(a => MakeRegex(a, rule))
+            .MakeString($"(?{getGroupOptions()}:", "|", ")");
         return (standalone && RuleIsKeyword(rule))
             ? $@"\b{block}\b"
             : block;
+
+        string getGroupOptions()
+        {
+            bool inheritedCaseInsensitivity =
+                parentRule?.GetCaseInsensitivity(grammar, parentRule)
+                ?? false; // ANTLR4 default is caseInsensitivity=false
+            bool? ruleCaseInsensitivity = rule.GetCaseInsensitivity(grammar, parentRule);
+            return (inheritedCaseInsensitivity, ruleCaseInsensitivity) switch {
+                (false, true) => "i",
+                (true, false) => "-i",
+                _ => ""
+            };
+        }
     }
 
-    internal string MakeRegex(GrammarAST node)
+    internal string MakeRegex(GrammarAST node, Rule? parentRule)
     {
         string regex = node switch {
-            Alternative a => a.Elements.Select(c => MakeRegex(c)).MakeString(),
-            Block b => $"(?:{b.Items.Select(c => MakeRegex(c)).MakeString("|")})",
+            Alternative a => a.Elements.Select(c => MakeRegex(c, parentRule)).MakeString(),
+            Block b => $"(?:{b.Items.Select(c => MakeRegex(c, parentRule)).MakeString("|")})",
             LexerBlock b => // called SetAST in the ANTLR java tool
                 CombineSets( // ANTLR only supports single-character literals and character sets
                     b.Items.Select(body => body switch {
                         Literal(string c) => $"[{EscapeAsRegex(c)}]",
-                        _ => MakeRegex(body)
+                        _ => MakeRegex(body, parentRule)
                     }))
                 .ReplaceFirst("[", b.IsNot ? "[^" : "["),
             CharRange r => $"[{r.From}-{r.To}]", //$"[\\u{a:04X}-\\u{b:04X}]",
             DotElement => ".",
             TokenRef(string name) tr =>
-                tr.GetRuleOrNull(grammar) is Rule r ? MakeRegex(r, standalone: false) :
-                tr.Name == "EOF" ? @"\z" :
+                tr.GetRuleOrNull(grammar) is Rule r ? MakeRegex(r, parentRule) :
+                name is "EOF" ? @"\z" :
                 regexInlineComment($"unknown ref {name} at line {tr.Span.Begin.Line}"),
             Literal(string value) { IsNot: true } => $"[^{EscapeAsRegex(value)}]",
             Literal(string value) => EscapeAsRegex(value),
@@ -174,7 +188,7 @@ public partial class TmLanguageGenerator(
         if (node is SyntaxElement { Suffix: var suffix and not SuffixKind.None })
         {
             // only enclose in (non-capturing) group if it's needed
-            return node is Block or CharRange or LexerCharSet or LexerBlock
+            return node is Block or CharRange or LexerCharSet or LexerBlock or TokenRef
                     || regex is [_] or ['\\', _] // a+, .*?, \n+ etc.
                 ? regex + suffix.ToText()
                 : $"(?:{regex}){suffix.ToText()}";

@@ -113,11 +113,12 @@ static class RuleRefExtensions
 
 static class RuleExtensions
 {
-    public static bool IsCaseInsensitive(this Rule rule, Grammar grammar)
+    public static bool? GetCaseInsensitivity(this Rule rule, Grammar grammar, Rule? parentRule)
     {
-        bool? ruleCaseInsensitivity = rule.Options.FindBool("caseInsensitive");
         bool? grammarCaseInsensitivity = grammar.Options.FindBool("caseInsensitive");
-        return ruleCaseInsensitivity ?? grammarCaseInsensitivity ?? false;
+        bool? parentRuleCaseInsensitivity = parentRule?.Options.FindBool("caseInsensitive");
+        bool? ruleCaseInsensitivity = rule.Options.FindBool("caseInsensitive");
+        return ruleCaseInsensitivity ?? parentRuleCaseInsensitivity ?? grammarCaseInsensitivity;
     }
 }
 

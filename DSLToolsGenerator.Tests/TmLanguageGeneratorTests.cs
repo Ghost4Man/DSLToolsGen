@@ -37,7 +37,34 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
     {
         (TmLanguageGenerator gen, var grammar) = GetTmLanguageGeneratorForGrammar(
             $"lexer grammar ExampleLexer; ABC : {antlrRuleBody} ;");
-        Assert.Equal(expectedRegex, gen.MakeRegex(grammar.LexerRules[0].AlternativeList.Items[0]));
+        Assert.Equal(expectedRegex, gen.MakeRegex(grammar.LexerRules[0].AlternativeList.Items[0], parentRule: null));
+    }
+
+    [Theory]
+    [InlineData(null, null, null,   @"(?:x(?:[A-Z])+|@abc)")]
+    [InlineData(null, false, false, @"(?:x(?:[A-Z])+|@abc)")]
+    [InlineData(true, false, null,  @"(?:x(?:[A-Z])+|@abc)")]
+    [InlineData(null, null, true,   @"(?:x(?i:[A-Z])+|@abc)")]
+    [InlineData(true, false, true,  @"(?:x(?i:[A-Z])+|@abc)")]
+    [InlineData(null, true, null,   @"(?i:x(?:[A-Z])+|@abc)")]
+    [InlineData(null, true, true,   @"(?i:x(?:[A-Z])+|@abc)")]
+    [InlineData(true, null, null,   @"(?i:x(?:[A-Z])+|@abc)")]
+    [InlineData(null, true, false,  @"(?i:x(?-i:[A-Z])+|@abc)")]
+    [InlineData(true, null, false,  @"(?i:x(?-i:[A-Z])+|@abc)")]
+    public void MakeRegex_on_rules_with_case_sensitivity_options_ー_generates_correct_regex(
+        bool? grammarCaseInsensitive, bool? ruleCaseInsensitive, bool? fragmentRuleCaseInsensitive, string expectedRegex)
+    {
+        (TmLanguageGenerator gen, var grammar) = GetTmLanguageGeneratorForGrammar($"""
+            lexer grammar ExampleLexer;
+            {optionList(grammarCaseInsensitive)}
+            ABC {optionList(ruleCaseInsensitive)} : 'x' LETTER+ | '@abc' ;
+            fragment LETTER {optionList(fragmentRuleCaseInsensitive)} : [A-Z] ;
+            """);
+        testOutput.WriteLine(grammar.ToString());
+        Assert.Equal(expectedRegex, gen.MakeRegex(grammar.LexerRules[0], parentRule: null));
+
+        static string optionList(bool? caseInsensitive)
+            => caseInsensitive is bool value ? $"options {{ caseInsensitive={value}; }}" : "";
     }
 
     [Fact]

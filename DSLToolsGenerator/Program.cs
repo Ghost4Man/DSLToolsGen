@@ -190,7 +190,7 @@ Func<Stream, Task> ConvertGrammarToTextMateLanguage(Grammar grammar, bool verbos
                 {
                     Alternative? alt = rule.AlternativeList.Items[i];
                     Console.Error.WriteLine($"  {i}. {GREEN}{alt}{RESET}");
-                    Console.Error.WriteLine($"     regex: {YELLOW}{generator.MakeRegex(alt)}{RESET}");
+                    Console.Error.WriteLine($"     regex: {YELLOW}{generator.MakeRegex(alt, rule)}{RESET}");
                 }
             }
             Console.Error.WriteLine();

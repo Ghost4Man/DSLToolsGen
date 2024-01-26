@@ -88,28 +88,29 @@ public partial class TmLanguageGenerator(
         return rule;
     }
 
-    [GeneratedRegex("""^(?:(ID(ENT(IFIER)?)?|NAME|VAR(IABLE)?(_?NAME)?|.+_NAME|KEY|PROP(ERTY)?))$""")]
+    [GeneratedRegex("""^(?:(ID(ENT(IFIER)?)?|NAME|VAR(IABLE)?(_?NAME)?|.+_NAME|KEY|PROP(ERTY)?))$""", RegexOptions.IgnoreCase)]
     private partial Regex VariablePattern();
 
-    [GeneratedRegex("""^(?:(INT(EGER)?|DECIMAL|FLOAT(ING_?POINT)?|REAL|HEX(ADECIMAL)?|NUM(BER|ERIC)?)(_?LIT(ERAL)?)?)$""")]
+    [GeneratedRegex("""^(?:(INT(EGER)?|DECIMAL|FLOAT(ING_?POINT)?|REAL|HEX(ADECIMAL)?|NUM(BER|ERIC)?)(_?LIT(ERAL)?)?)$""", RegexOptions.IgnoreCase)]
     private partial Regex NumericLiteralPattern();
 
-    [GeneratedRegex("""^(?:(LINE_?)?COMMENT)$""")]
+    [GeneratedRegex("""^(?:((SINGLE_?)?LINE|SL)?_?COMMENT)$""", RegexOptions.IgnoreCase)]
     private partial Regex LineCommentPattern();
 
-    [GeneratedRegex("""^(?:(STR(ING)?|TE?XT)(_?LIT(ERAL)?)?)$""")]
+    [GeneratedRegex("""^(?:(STR(ING)?|TE?XT|CHR|CHAR(ACTER)?)(_?(LIT(ERAL)?|CONST(ANT)?))?)$""", RegexOptions.IgnoreCase)]
     private partial Regex StringLiteralPattern();
 
     string GetScopeNameForRule(Rule rule)
     {
-        var ruleSuffix = $".{rule.Name.ToLowerInvariant()}";
+        var lowercaseRuleName = rule.Name.ToLowerInvariant();
+        var trimmedName = rule.Name.AsSpan().Trim('_');
         return rule.Name switch {
-            _ when RuleIsKeyword(rule) => "keyword" + ruleSuffix,
-            _ when VariablePattern().IsMatch(rule.Name) => "variable" + ruleSuffix,
-            _ when NumericLiteralPattern().IsMatch(rule.Name) => "constant.numeric" + ruleSuffix,
-            _ when LineCommentPattern().IsMatch(rule.Name) => "comment.line",
-            _ when StringLiteralPattern().IsMatch(rule.Name) => "string",
-            _ => $"other.{rule.Name.ToLowerInvariant()}",
+            _ when RuleIsKeyword(rule) => $"keyword.{lowercaseRuleName}",
+            _ when VariablePattern().IsMatch(trimmedName) => $"variable.{lowercaseRuleName}",
+            _ when NumericLiteralPattern().IsMatch(trimmedName) => $"constant.numeric.{lowercaseRuleName}",
+            _ when LineCommentPattern().IsMatch(trimmedName) => $"comment.line.{lowercaseRuleName}",
+            _ when StringLiteralPattern().IsMatch(trimmedName) => $"string.{lowercaseRuleName}",
+            _ => $"other.{lowercaseRuleName}",
         };
     }
 

@@ -105,6 +105,43 @@ public static class ActionExtensions
     }
 }
 
+static class GrammarExtensions
+{
+    public static IEnumerable<(Rule Rule, Literal Literal)> GetSingleTokenLexerRules(this Grammar grammar)
+    {
+        foreach (var r in grammar.LexerRules)
+        {
+            if (r.AlternativeList.Items is [Alternative { Elements: [Literal literal] }])
+                yield return (r, literal);
+        }
+    }
+
+    // In a combined grammar, ANTLR creates implicit lexer rules for all literals
+    // without a corresponding lexer rule that matches only that literal.
+    // e.g. for a parser rule `stmt : await_kw='await'? expr ;`, an implicit rule
+    // like `AWAIT : 'await' ;` (but unnamed) is generated
+    public static IEnumerable<Rule> GetImplicitTokenRules(this Grammar grammar)
+    {
+        var literalsWithCorrespondingLexerRule =
+            grammar.GetSingleTokenLexerRules().Select(r => r.Literal);
+
+        // find literals without corresponding (single-token) lexer rules
+        IEnumerable<Literal> implicitTokenLiterals = grammar.ParserRules
+            .SelectMany(r => r.GetAllDescendants().OfType<Literal>())
+            .Except(literalsWithCorrespondingLexerRule);
+
+        return implicitTokenLiterals.Select(createSingleTokenLexerRule);
+
+        static Rule createSingleTokenLexerRule(Literal originalLiteral)
+        {
+            // we have to create a copy without the suffix (quantity), label, etc.
+            Literal literal = new(originalLiteral.Text) { Span = originalLiteral.Span };
+            return new Rule(name: $"'{literal.Text}'",
+                new() { Items = { new() { Elements = { literal } } } });
+        }
+    }
+}
+
 static class RuleRefExtensions
 {
     public static Rule? GetRuleOrNull(this RuleRef ruleRef, Grammar grammar)
@@ -153,6 +190,12 @@ static class TokenRefExtensions
 
     public static bool IsOptional(this SyntaxElement element)
         => element.Suffix is SuffixKind.Optional or SuffixKind.OptionalNonGreedy;
+}
+
+static class SyntaxNodeExtensions
+{
+    public static IEnumerable<SyntaxNode> GetAllDescendants(this SyntaxNode node)
+        => node.Children().SelectMany(GetAllDescendants).Prepend(node);
 }
 
 static class SyntaxElementExtensions

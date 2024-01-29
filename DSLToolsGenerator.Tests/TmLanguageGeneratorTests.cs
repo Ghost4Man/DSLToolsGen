@@ -67,11 +67,13 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
             => caseInsensitive is bool value ? $"options {{ caseInsensitive={value}; }}" : "";
     }
 
-    [Fact]
-    public void given_lexer_grammar_with_keywords_ー_generated_TM_grammar_tokenizes_correctly()
+    [Theory]
+    [InlineData("grammar")]
+    [InlineData("lexer grammar")]
+    public void given_lexer_grammar_with_keywords_ー_generated_TM_grammar_tokenizes_correctly(string grammarKind)
     {
-        (TmLanguageGenerator g, _) = GetTmLanguageGeneratorForGrammar("""
-            lexer grammar ExampleLexer;
+        (TmLanguageGenerator g, _) = GetTmLanguageGeneratorForGrammar($"""
+            {grammarKind} ExampleLexer;
             IF_KW : 'if' ;
             THEN_KW : 'then' ;
             ELSE_KW : 'else' ;
@@ -122,6 +124,27 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
             ExpectedToken("__a_0b__99X", ["variable.id.example"]),
             ExpectedToken("line2", ["variable.id.example"]),
             ExpectedToken("_", ["variable.id.example"]));
+    }
+
+    [Fact]
+    public void given_ANTLR_combined_grammar_with_implicit_token_literals_ー_generated_TM_grammar_correctly_tokenizes_all_keywords()
+    {
+        (TmLanguageGenerator g, _) = GetTmLanguageGeneratorForGrammar("""
+            grammar ExampleLexer;
+            stmt : 'if' ID 'then' stmt    #ifStmt
+                 | ('print' | 'PRINT') ID #printStmt ;
+            ID : [a-zA-Z_]+ ;
+            WS : [ \t\r\n] -> channel(HIDDEN) ;
+            """);
+        const string input = "if a then PRINT x";
+        string generatedTextMateGrammar = g.GenerateTextMateLanguageJson();
+        var tokens = TokenizeString(generatedTextMateGrammar, "source.example", input);
+        Assert.Collection(tokens,
+            ExpectedToken("if", ["keyword.if.example"]),
+            ExpectedToken("a", ["variable.id.example"]),
+            ExpectedToken("then", ["keyword.then.example"]),
+            ExpectedToken("PRINT", ["keyword.print.example"]),
+            ExpectedToken("x", ["variable.id.example"]));
     }
 
     Action<(string text, IReadOnlyList<string> scopes)> ExpectedToken(string text, string[] scopes) => token => {

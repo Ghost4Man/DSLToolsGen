@@ -39,7 +39,10 @@ public partial class TmLanguageGenerator(
     {
         var languageName = grammar.Name is null or "" ? "untitled" : grammar.Name.TrimSuffix("Lexer");
 
-        var rulesToHighlight = grammar.LexerRules.Where(ShouldHighlight);
+        IEnumerable<Rule> implicitTokenRules = grammar.GetImplicitTokenRules();
+
+        var rulesToHighlight = implicitTokenRules
+            .Concat(grammar.LexerRules.Where(ShouldHighlight));
 
         // TODO: reorder and/or transform the rules to fix the mismatch between
         //       ANTLR's longest-match and TextMate's leftmost-match behavior
@@ -111,6 +114,12 @@ public partial class TmLanguageGenerator(
     string GetScopeNameForRule(Rule rule)
     {
         var lowercaseRuleName = rule.Name.ToLowerInvariant();
+
+        // if this is an implicit (keyword) token rule, trim the quotes
+        if (lowercaseRuleName is ['\'', .. string literalText, '\'']
+                && literalText.All(char.IsLetterOrDigit))
+            lowercaseRuleName = literalText;
+
         var trimmedName = rule.Name.AsSpan().Trim('_');
         return rule.Name switch {
             _ when RuleIsKeyword(rule) => $"keyword.{lowercaseRuleName}",

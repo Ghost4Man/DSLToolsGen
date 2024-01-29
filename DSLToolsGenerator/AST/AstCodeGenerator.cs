@@ -26,11 +26,7 @@ public partial class AstCodeGenerator
 
         this.grammar = parserGrammar;
         this.diagnosticHandler = diagnosticHandler;
-        this.lexerRulesByLiteral = parserGrammar.LexerRules
-            .Select(r => r.AlternativeList.Items is [Alternative { Elements: [Literal literal] }]
-                ? new { Rule = r, Literal = literal }
-                : null)
-            .WhereNotNull()
+        this.lexerRulesByLiteral = parserGrammar.GetSingleTokenLexerRules()
             .ToDictionary(r => r.Literal.Text, r => r.Rule);
     }
 

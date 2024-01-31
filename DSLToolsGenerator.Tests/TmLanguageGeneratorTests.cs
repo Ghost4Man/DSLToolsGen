@@ -5,6 +5,8 @@ using TextMateSharp.Internal.Types;
 using TextMateSharp.Registry;
 using TextMateSharp.Themes;
 
+using DSLToolsGenerator.SyntaxHighlighting.Models;
+
 namespace DSLToolsGenerator.SyntaxHighlighting.Tests;
 
 public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
@@ -147,6 +149,61 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
             ExpectedToken("x", ["variable.id.example"]));
     }
 
+    [Fact]
+    public void given_ANTLR_grammar_and_customized_TM_scopes_ー_generated_TM_grammar_tokenizes_correctly()
+    {
+        (TmLanguageGenerator g, _) = GetTmLanguageGeneratorForGrammar("""
+            lexer grammar ExampleLexer;
+            TAG : '<' ID '>' ;
+            BOLD : '**' .*? '**' ;
+            ID : [a-zA-Z_][a-zA-Z0-9_]* ;
+            WS : [ \t\r\n] -> channel(HIDDEN) ;
+            """,
+            config: new() {
+                RuleSettings = new Dictionary<string, RuleOptions>() {
+                    ["TAG"] = new(TextMateScopeName: "entity.name.tag"),
+                    ["BOLD"] = new(TextMateScopeName: "markup.bold"),
+                }
+            });
+        const string input = "abc **this is bold** <sometag>";
+        string generatedTextMateGrammar = g.GenerateTextMateLanguageJson();
+        var tokens = TokenizeString(generatedTextMateGrammar, "source.example", input);
+        Assert.Collection(tokens,
+            ExpectedToken("abc", ["variable.id.example"]),
+            ExpectedToken("**this is bold**", ["markup.bold.example"]),
+            ExpectedToken("<sometag>", ["entity.name.tag.example"]));
+    }
+
+    [Fact]
+    public void given_ANTLR_combined_grammar_and_customized_TM_scopes_including_implicit_tokens_ー_generated_TM_grammar_tokenizes_correctly()
+    {
+        (TmLanguageGenerator g, _) = GetTmLanguageGeneratorForGrammar("""
+            grammar ExampleLexer;
+            stmt : 'if' ID ':' ID ;
+            TAG : '<' ID '>' ;
+            BOLD : '**' .*? '**' ;
+            ID : [a-zA-Z_][a-zA-Z0-9_]* ;
+            WS : [ \t\r\n] -> channel(HIDDEN) ;
+            """,
+            config: new() {
+                RuleSettings = new Dictionary<string, RuleOptions>() {
+                    ["TAG"] = new(TextMateScopeName: "entity.name.tag"),
+                    ["BOLD"] = new(TextMateScopeName: "markup.bold"),
+                    ["'if'"] = new(TextMateScopeName: "keyword.control.if"),
+                    ["':'"] = new(TextMateScopeName: "punctuation.colon"),
+                }
+            });
+        const string input = "<script> if a: **b**";
+        string generatedTextMateGrammar = g.GenerateTextMateLanguageJson();
+        var tokens = TokenizeString(generatedTextMateGrammar, "source.example", input);
+        Assert.Collection(tokens,
+            ExpectedToken("<script>", ["entity.name.tag.example"]),
+            ExpectedToken("if", ["keyword.control.if.example"]),
+            ExpectedToken("a", ["variable.id.example"]),
+            ExpectedToken(":", ["punctuation.colon.example"]),
+            ExpectedToken("**b**", ["markup.bold.example"]));
+    }
+
     Action<(string text, IReadOnlyList<string> scopes)> ExpectedToken(string text, string[] scopes) => token => {
         Assert.Equal(text, token.text);
         Assert.Equal(scopes, token.scopes);
@@ -179,16 +236,20 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
         }
     }
 
-    (TmLanguageGenerator, Antlr4Ast.Grammar) GetTmLanguageGeneratorForGrammar(string grammarCode)
+    (TmLanguageGenerator, Antlr4Ast.Grammar) GetTmLanguageGeneratorForGrammar(
+        string grammarCode, SyntaxHighlightingConfiguration? config = null)
     {
         var grammar = Antlr4Ast.Grammar.Parse(grammarCode);
         Assert.Empty(grammar.ErrorMessages);
-        return (new TmLanguageGenerator(grammar, d => {
+        return (new TmLanguageGenerator(grammar, handleDiagnostic, config ?? new()), grammar);
+
+        void handleDiagnostic(Diagnostic d)
+        {
             if (d.Severity == DiagnosticSeverity.Error)
                 Assert.Fail(d.ToString());
             else
                 testOutput.WriteLine(d.ToString());
-        }), grammar);
+        }
     }
 }
 

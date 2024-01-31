@@ -113,6 +113,10 @@ public partial class TmLanguageGenerator(
 
     string GetScopeNameForRule(Rule rule)
     {
+        if (config.RuleSettings?.GetValueOrDefault(rule.Name)
+                is { TextMateScopeName: string scopeName })
+            return scopeName;
+
         var lowercaseRuleName = rule.Name.ToLowerInvariant();
 
         // if this is an implicit (keyword) token rule, trim the quotes

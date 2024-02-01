@@ -229,7 +229,7 @@ static Configuration? LoadConfiguration()
 {
     JsonSerializerOptions? configDeserializationOptions = new() {
         AllowTrailingCommas = true,
-        ReadCommentHandling = JsonCommentHandling.Allow,
+        ReadCommentHandling = JsonCommentHandling.Skip,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
     };
 

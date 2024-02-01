@@ -74,12 +74,12 @@ public partial class TmLanguageGenerator(
             ));
 
             string lookahead(Rule rule, string groupName)
-                => $@"(?=(?<{groupName}>{MakeRegex(rule, parentRule: null)})(?<rest{groupName}>.*)$)";
+                => $@"(?=(?<{groupName}>{MakeRegex(rule, parentRules: [])})(?<rest{groupName}>.*)$)";
         }
 
         patterns.AddRange(rulesToHighlight.Select(r => new Pattern(
             Comment: $"rule {r.Name}",
-            Match: MakeRegex(r, parentRule: null),
+            Match: MakeRegex(r, parentRules: []),
             Name: $"{GetScopeNameForRule(r)}.{languageName.ToLowerInvariant()}")));
 
         return new TmLanguageDocument(
@@ -158,11 +158,20 @@ public partial class TmLanguageGenerator(
     /// <summary>
     /// Returns a Oniguruma regex pattern for matching the specified lexer rule.
     /// </summary>
-    internal string MakeRegex(Rule rule, Rule? parentRule)
+    internal string MakeRegex(Rule rule, IEnumerable<Rule> parentRules)
     {
+        // first check if we're in a cycle
+        if (parentRules.Contains(rule))
+        {
+            return RegexWarningComment(
+                $"recursive lexer rules ({rule.Name}) are currently not supported",
+                emitWarning: true, forceFail: true);
+        }
+
+        Rule? parentRule = parentRules.LastOrDefault();
         bool standalone = parentRule is null;
         var alts = rule.AlternativeList.Items.Where(x => x != null);
-        var block = alts.Select(a => MakeRegex(a, rule))
+        var block = alts.Select(a => MakeRegex(a, parentRules.Append(rule)))
             .MakeString($"(?{getGroupOptions()}:", "|", ")");
         return (standalone && RuleIsKeyword(rule))
             ? $@"\b{block}\b"
@@ -182,29 +191,29 @@ public partial class TmLanguageGenerator(
         }
     }
 
-    internal string MakeRegex(GrammarAST node, Rule? parentRule)
+    internal string MakeRegex(GrammarAST node, IEnumerable<Rule> parentRules)
     {
         string regex = node switch {
-            Alternative a => a.Elements.Select(c => MakeRegex(c, parentRule)).MakeString(),
-            Block b => $"(?:{b.Items.Select(c => MakeRegex(c, parentRule)).MakeString("|")})",
+            Alternative a => a.Elements.Select(c => MakeRegex(c, parentRules)).MakeString(),
+            Block b => $"(?:{b.Items.Select(c => MakeRegex(c, parentRules)).MakeString("|")})",
             LexerBlock b => // called SetAST in the ANTLR java tool
                 CombineSets( // ANTLR only supports single-character literals and character sets
                     b.Items.Select(body => body switch {
                         Literal(string c) => $"[{EscapeAsRegex(c)}]",
-                        _ => MakeRegex(body, parentRule)
+                        _ => MakeRegex(body, parentRules)
                     }))
                 .ReplaceFirst("[", b.IsNot ? "[^" : "["),
             CharRange r => $"[{r.From}-{r.To}]", //$"[\\u{a:04X}-\\u{b:04X}]",
             DotElement => ".",
             TokenRef(string name) tr =>
-                tr.GetRuleOrNull(grammar) is Rule r ? MakeRegex(r, parentRule) :
+                tr.GetRuleOrNull(grammar) is Rule r ? MakeRegex(r, parentRules) :
                 name is "EOF" ? @"\z" :
-                regexInlineComment($"unknown ref {name} at line {tr.Span.Begin.Line}"),
+                RegexWarningComment($"unknown ref {name} at line {tr.Span.Begin.Line}"),
             Literal(string value) { IsNot: true } => $"[^{EscapeAsRegex(value)}]",
             Literal(string value) => EscapeAsRegex(value),
             LexerCharSet set => $"[{(set.IsNot ? "^" : "")}{set.Value}]",
             //_ => throw new NotImplementedException($"{node.GetType().Name} {node}: not yet implemented"),
-            _ => regexInlineComment($"unknown node: {node.GetType().Name} {node}"),
+            _ => RegexWarningComment($"unknown node: {node.GetType().Name} {node}"),
         };
 
         if (node is SyntaxElement { Suffix: var suffix and not SuffixKind.None })
@@ -217,14 +226,17 @@ public partial class TmLanguageGenerator(
         }
         else
             return regex;
+    }
 
-        string regexInlineComment(string text, bool emitWarning = true)
-        {
-            if (emitWarning)
-                diagnosticHandler(new(DiagnosticSeverity.Warning, text));
+    string RegexWarningComment(string text, bool emitWarning = true, bool forceFail = false)
+    {
+        if (emitWarning)
+            diagnosticHandler(new(DiagnosticSeverity.Warning, text));
 
-            return $"(?# {text} )";
-        }
+        // we need to escape/replace the parentheses (since they end the comment)
+        string commentText = text.Replace('(', '{').Replace(')', '}');
+
+        return $"(?# {commentText} )" + (forceFail ? "((?!))" : "");
     }
 
     string EscapeAsRegex(string text) =>

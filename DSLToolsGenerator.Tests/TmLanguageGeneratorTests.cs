@@ -39,7 +39,7 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
     {
         (TmLanguageGenerator gen, var grammar) = GetTmLanguageGeneratorForGrammar(
             $"lexer grammar ExampleLexer; ABC : {antlrRuleBody} ;");
-        Assert.Equal(expectedRegex, gen.MakeRegex(grammar.LexerRules[0].AlternativeList.Items[0], parentRule: null));
+        Assert.Equal(expectedRegex, gen.MakeRegex(grammar.LexerRules[0].AlternativeList.Items[0], parentRules: []));
     }
 
     [Theory]
@@ -63,7 +63,7 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
             fragment LETTER {optionList(fragmentRuleCaseInsensitive)} : [A-Z] ;
             """);
         testOutput.WriteLine(grammar.ToString());
-        Assert.Equal(expectedRegex, gen.MakeRegex(grammar.LexerRules[0], parentRule: null));
+        Assert.Equal(expectedRegex, gen.MakeRegex(grammar.LexerRules[0], parentRules: []));
 
         static string optionList(bool? caseInsensitive)
             => caseInsensitive is bool value ? $"options {{ caseInsensitive={value}; }}" : "";
@@ -202,6 +202,27 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
             ExpectedToken("a", ["variable.id.example"]),
             ExpectedToken(":", ["punctuation.colon.example"]),
             ExpectedToken("**b**", ["markup.bold.example"]));
+    }
+
+    [Fact]
+    public void given_ANTLR_lexer_grammar_with_recursive_rules_ー_ignores_them()
+    {
+        // note: here we essentially just check that the generator
+        // does not crash due to infinite recursion of MakeRegex calls,
+        // but we might want to add proper support for recursive lexer rules later
+        (TmLanguageGenerator g, _) = GetTmLanguageGeneratorForGrammar("""
+            lexer grammar ExampleLexer;
+            ID : [a-zA-Z]+ ;
+            COMMENT : BLOCK_COMMENT | '//' ~[\r\n]* ;
+            fragment BLOCK_COMMENT: '/*' COMMENT_CONTENT*? '*/' -> channel(HIDDEN);
+            fragment COMMENT_CONTENT : (BLOCK_COMMENT | .) ;
+            """);
+        const string input = "abc // comment here";
+        string generatedTextMateGrammar = g.GenerateTextMateLanguageJson();
+        var tokens = TokenizeString(generatedTextMateGrammar, "source.example", input);
+        Assert.Collection(tokens,
+            ExpectedToken("abc", ["variable.id.example"]),
+            ExpectedToken("// comment here", ["comment.line.comment.example"]));
     }
 
     Action<(string text, IReadOnlyList<string> scopes)> ExpectedToken(string text, string[] scopes) => token => {

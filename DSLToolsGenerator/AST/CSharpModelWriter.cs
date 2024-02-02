@@ -1,10 +1,15 @@
-﻿using DSLToolsGenerator.AST.Models;
+using DSLToolsGenerator.AST.Models;
 
 namespace DSLToolsGenerator.AST;
 
 public class CSharpModelWriter : CodeGeneratingModelVisitor
 {
-    public CSharpModelWriter(TextWriter output) : base(output) { }
+    readonly AstConfiguration config;
+
+    public CSharpModelWriter(TextWriter output, AstConfiguration config) : base(output)
+    {
+        this.config = config ?? throw new ArgumentNullException(nameof(config));
+    }
 
     string TypeName(string typeName, bool nullable) => typeName + (nullable ? "?" : "");
     string TypeName(NodeClassModel nodeClass, bool nullable) => TypeName(nodeClass.Name, nullable);
@@ -122,10 +127,10 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
     /// </summary>
     /// <param name="model">The codegen model to write to a string.</param>
     /// <returns>A string with C# code representing the <paramref name="model"/>.</returns>
-    public static string ModelToString(IModel model)
+    public static string ModelToString(IModel model, AstConfiguration? config = null)
     {
         var writer = new StringWriter { NewLine = "\n" };
-        var visitor = new CSharpModelWriter(writer);
+        var visitor = new CSharpModelWriter(writer, config ?? new());
         visitor.Visit(model);
         return writer.ToString();
     }
@@ -133,10 +138,11 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
     public static string ModelToString(IEnumerable<IModel> models)
         => ModelToString(models, (v, mm) => v.VisitAll(mm, separator: ""));
 
-    public static string ModelToString<TModel>(TModel model, Action<CSharpModelWriter, TModel> visitorAction)
+    public static string ModelToString<TModel>(TModel model,
+        Action<CSharpModelWriter, TModel> visitorAction, AstConfiguration? config = null)
     {
         var writer = new StringWriter { NewLine = "\n" };
-        var visitor = new CSharpModelWriter(writer);
+        var visitor = new CSharpModelWriter(writer, config ?? new());
         visitorAction(visitor, model);
         return writer.ToString();
     }

@@ -1,13 +1,10 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 using Antlr4Ast;
-
-using DSLToolsGenerator.AST.Models;
-using DSLToolsGenerator.SyntaxHighlighting.Models;
 
 using GrammarAST = Antlr4Ast.SyntaxNode;
 

@@ -1,4 +1,4 @@
-﻿using System.CommandLine;
+using System.CommandLine;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -10,7 +10,6 @@ using Antlr4Ast;
 using DSLToolsGenerator;
 using DSLToolsGenerator.AST;
 using DSLToolsGenerator.SyntaxHighlighting;
-using DSLToolsGenerator.SyntaxHighlighting.Models;
 
 [assembly: InternalsVisibleTo("DSLToolsGenerator.Tests")]
 
@@ -67,24 +66,29 @@ Task<int> GenerateAstCodeFromGrammarFile(FileInfo grammarFile, FileInfo? outputF
         grammar.Kind = GrammarKind.Full;
     }
 
-    var generator = new AstCodeGenerator(grammar, diag => {
-        Console.Error.WriteLine(diag.ToString());
-    });
+    Configuration config = LoadConfiguration() ?? new();
+
+    var generator = new AstCodeGenerator(grammar,
+        diagnosticHandler: Console.Error.WriteLine,
+        config.Ast);
+
     var model = generator.GenerateAstCodeModel();
+
     if (outputFile != null)
     {
         if (!TryOpenWrite(outputFile, out Stream? stream))
             return ExitCode(1);
 
         using var sw = new StreamWriter(stream);
-        var modelWriter = new CSharpModelWriter(sw);
+        var modelWriter = new CSharpModelWriter(sw, config.Ast);
         modelWriter.Visit(model);
     }
     else
     {
-        var modelWriter = new CSharpModelWriter(Console.Out);
+        var modelWriter = new CSharpModelWriter(Console.Out, config.Ast);
         modelWriter.Visit(model);
     }
+
     return ExitCode(0);
 }
 
@@ -167,11 +171,11 @@ Func<Stream, Task> ConvertGrammarToTextMateLanguage(Grammar grammar, bool verbos
         Console.Error.WriteLine("Warning: no lexer rules found");
     }
 
-    Configuration? config = LoadConfiguration();
+    Configuration config = LoadConfiguration() ?? new();
 
     var generator = new TmLanguageGenerator(grammar,
         diagnosticHandler: Console.Error.WriteLine,
-        config?.SyntaxHighlighting ?? new());
+        config.SyntaxHighlighting);
 
     if (verbose)
     {
@@ -230,6 +234,8 @@ static Configuration? LoadConfiguration()
     JsonSerializerOptions? configDeserializationOptions = new() {
         AllowTrailingCommas = true,
         ReadCommentHandling = JsonCommentHandling.Skip,
+        // disallow unknown keys by default, but Skip on the top level (Configuration)
+        // to allow keys like "$schema" etc.
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
     };
 
@@ -246,9 +252,4 @@ static Configuration? LoadConfiguration()
     }
 
     return config;
-}
-
-namespace DSLToolsGenerator
-{
-    public record class Configuration(SyntaxHighlightingConfiguration SyntaxHighlighting);
 }

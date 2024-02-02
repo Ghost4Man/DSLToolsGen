@@ -1,11 +1,9 @@
-﻿using TextMateSharp.Grammars;
+using TextMateSharp.Grammars;
 using TextMateSharp.Internal.Grammars.Reader;
 using TextMateSharp.Internal.Themes;
 using TextMateSharp.Internal.Types;
 using TextMateSharp.Registry;
 using TextMateSharp.Themes;
-
-using DSLToolsGenerator.SyntaxHighlighting.Models;
 
 namespace DSLToolsGenerator.SyntaxHighlighting.Tests;
 

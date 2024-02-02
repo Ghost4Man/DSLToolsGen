@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 
 using Antlr4Ast;
@@ -12,6 +12,7 @@ public partial class AstCodeGenerator
 {
     readonly Grammar grammar;
     readonly Action<Diagnostic> diagnosticHandler;
+    readonly AstConfiguration config;
     readonly Dictionary<string, Rule> lexerRulesByLiteral;
 
     // Mapping from parser rules to codegen models of AST Node classes.
@@ -19,13 +20,14 @@ public partial class AstCodeGenerator
     // for rules with multiple alternatives.
     readonly Dictionary<Rule, NodeClassModel> nodeClassesByRule = new();
 
-    public AstCodeGenerator(Grammar parserGrammar, Action<Diagnostic> diagnosticHandler)
+    public AstCodeGenerator(Grammar parserGrammar, Action<Diagnostic> diagnosticHandler, AstConfiguration config)
     {
         if (parserGrammar.Kind == GrammarKind.Lexer)
             throw new ArgumentException("cannot generate AST from a lexer grammar");
 
         this.grammar = parserGrammar;
         this.diagnosticHandler = diagnosticHandler;
+        this.config = config;
         this.lexerRulesByLiteral = parserGrammar.GetSingleTokenLexerRules()
             .ToDictionary(r => r.Literal.Text, r => r.Rule);
     }

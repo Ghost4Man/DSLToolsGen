@@ -18,6 +18,9 @@ namespace DSLToolsGenerator.AST
 {
     public record AstConfiguration
     {
+        public string? Namespace { get; init; }
+
+        public string? AntlrNamespace { get; init; }
     }
 }
 

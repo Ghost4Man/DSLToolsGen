@@ -150,6 +150,140 @@ public class IndentedTextWriterTests
         """, output.ToString());
     }
 
+    [Fact]
+    public void when_given_empty_embedded_action_surrounded_by_empty_lines__WriteCode_removes_extra_empty_lines()
+    {
+        (var writer, StringWriter output) = CreateNew();
+
+        writer.WriteCode($$"""
+            one
+
+            {{_ => { }}}
+
+            two
+            """);
+
+        Assert.Equal("""
+            one
+
+            two
+
+            """, output.ToString());
+    }
+
+    [Fact]
+    public void when_given_null_interpolation_surrounded_by_empty_lines__WriteCode_removes_extra_empty_lines()
+    {
+        (var writer, StringWriter output) = CreateNew();
+
+        writer.WriteCode($$"""
+            one
+
+            {{(false ? "x" : null)}}
+
+            two
+            """);
+
+        Assert.Equal("""
+            one
+
+            two
+
+            """, output.ToString());
+    }
+
+    [Fact]
+    public void when_given_two_null_interpolations_surrounded_by_empty_lines__WriteCode_removes_extra_empty_lines()
+    {
+        (var writer, StringWriter output) = CreateNew();
+
+        writer.WriteCode($$"""
+            one
+
+            {{(false ? "x" : null)}}
+
+            {{(false ? "x" : null)}}
+
+            two
+            """);
+
+        Assert.Equal("""
+            one
+
+            two
+
+            """, output.ToString());
+    }
+
+    [Fact]
+    public void when_given_two_nonempty_interpolations_surrounded_by_empty_lines__WriteCode_does_not_remove_newlines()
+    {
+        (var writer, StringWriter output) = CreateNew();
+
+        writer.Indent().WriteCode($$"""
+            one
+
+            {{_ => writer.WriteCode($"using System;")}}
+
+            {{"namespace Abc;"}}
+
+            two
+            """);
+
+        Assert.Equal("""
+            one
+
+            using System;
+
+            namespace Abc;
+
+            two
+
+        """, output.ToString());
+    }
+
+    [Fact]
+    public void when_given_empty_action_before_empty_line__WriteCode_preserves_empty_line()
+    {
+        (var writer, StringWriter output) = CreateNew();
+
+        writer.WriteCode($$"""
+            using System;
+            {{_ => { }}}
+
+            foo
+            """);
+
+        Assert.Equal("""
+            using System;
+
+            foo
+
+            """, output.ToString());
+    }
+
+    [Fact]
+    public void when_given_two_empty_actions_before_empty_line__WriteCode_preserves_one_empty_line()
+    {
+        (var writer, StringWriter output) = CreateNew();
+
+        writer.WriteCode($$"""
+            one
+            {{_ => { }}}
+
+            {{_ => { }}}
+
+            two
+            """);
+
+        Assert.Equal("""
+            one
+
+            two
+
+            """, output.ToString());
+    }
+
     static (IndentedTextWriter, StringWriter) CreateNew()
     {
         var sw = new StringWriter { NewLine = "\n" };

@@ -48,6 +48,9 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
             #nullable enable
             using System;
             using System.Collections.Generic;
+            {{(config.AntlrNamespace is string antlrNS ? $"using {antlrNS};" : null)}}
+
+            {{(config.Namespace is string ns ? $"namespace {ns};" : null)}}
 
             public partial interface IAstNode { }
 

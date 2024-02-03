@@ -8,7 +8,8 @@ public class IndentedTextWriter(TextWriter inner)
     public int CurrentIndentSize { get; set; }
     public int IndentSpaces { get; set; } = 4;
 
-    internal int CurrentColumn { get; private set; }
+    internal int CurrentColumn { get; private set; } // index (starts at zero)
+    internal int CurrentLine { get; private set; } // index (starts at zero)
 
     public IndentedTextWriter Indent()
     {
@@ -42,6 +43,7 @@ public class IndentedTextWriter(TextWriter inner)
             isFirstLine = false;
             inner.WriteLine(line);
             CurrentColumn = 0;
+            CurrentLine++;
         }
     }
 
@@ -57,6 +59,7 @@ public class IndentedTextWriter(TextWriter inner)
             {
                 inner.WriteLine();
                 CurrentColumn = 0;
+                CurrentLine++;
                 if (line.Length > 0)
                     PrintSpaces(CurrentIndentSize);
             }
@@ -88,18 +91,17 @@ public ref struct AutoIndentStringHandler(IndentedTextWriter writer)
         : this(writer) { }
 
     int temporaryInterpolationIndentation;
-    bool temporaryNewlineDeduplication;
+    int prefixNewlinesToTrim;
 
     public void AppendLiteral(ReadOnlySpan<char> s)
     {
-        // If the previous call was a AppendFormatted and it ended with a newline
-        // and `s` begins with a newline, skip ("deduplicate") this newline
-        if (temporaryNewlineDeduplication)
+        var originalString = s;
+
+        for (int i = 0; i < prefixNewlinesToTrim; i++)
         {
             s = s is ['\n', .. var rest] ? rest :
                 s is ['\r', '\n', .. var rest2] ? rest2 :
                 s;
-            temporaryNewlineDeduplication = false;
         }
 
         var lastLine = GetLastLine(s);
@@ -123,6 +125,27 @@ public ref struct AutoIndentStringHandler(IndentedTextWriter writer)
         //   unindented again
         //   """
         writer.CurrentIndentSize += temporaryInterpolationIndentation;
+
+        // Count how many newlines there are at the end of this string
+        // (to trim the same number of newlines next time
+        // if the AppendFormatted call in between did not print anything)
+        // For example, this will only print a single empty line between "one" and "two"
+        //   $$"""
+        //   one            |  AppendLiteral("one\n");    // prints "one\n"; prefixNewlinesToTrim=1
+        //   {{null}}       |  AppendFormatted(null);     // AfterAppendFormatted(wasEmpty: true)
+        //                  |  AppendLiteral("\n\n");     // prints "\n" (1 newline was trimmed); prefixNewlinesToTrim=2
+        //   {{null}}       |  AppendFormatted(null);     // AfterAppendFormatted(wasEmpty: true)
+        //                  |          
+        //   two            |  AppendLiteral("\n\ntwo");  // prints "two" (2 newlines were trimmed)
+        if (getTrailingWhitespace(originalString) is { IsEmpty: false } trailingWhitespace)
+        {
+            prefixNewlinesToTrim = trailingWhitespace.Count('\n');
+        }
+
+        ReadOnlySpan<char> getTrailingWhitespace(ReadOnlySpan<char> text)
+            => text.LastIndexOfAnyExcept(['\r', '\n', ' ', '\t']) is int index and >= 0
+                ? text[index..]
+                : text;
     }
 
     static ReadOnlySpan<char> GetLastLine(ReadOnlySpan<char> text)
@@ -134,7 +157,7 @@ public ref struct AutoIndentStringHandler(IndentedTextWriter writer)
 
     /// <summary>
     /// Simply invokes the provided action. Useful for invoking void-returning
-    /// code generation methods form inside string interpolation.
+    /// code generation methods from inside string interpolation.
     /// </summary>
     /// <example>
     /// <code>
@@ -150,25 +173,35 @@ public ref struct AutoIndentStringHandler(IndentedTextWriter writer)
     /// </example>
     public void AppendFormatted(Action<IndentedTextWriter> embeddedAction)
     {
+        var before = (writer.CurrentLine, writer.CurrentColumn);
         embeddedAction?.Invoke(writer);
-        writer.CurrentIndentSize -= temporaryInterpolationIndentation;
-        temporaryInterpolationIndentation = 0;
-        temporaryNewlineDeduplication = writer.CurrentColumn == 0;
+        var after = (writer.CurrentLine, writer.CurrentColumn);
+        AfterAppendFormatted(wasEmpty: after == before);
     }
 
     public void AppendFormatted(ReadOnlySpan<char> str)
     {
         writer.Write(str);
-        writer.CurrentIndentSize -= temporaryInterpolationIndentation;
-        temporaryInterpolationIndentation = 0;
-        temporaryNewlineDeduplication = writer.CurrentColumn == 0;
+        AfterAppendFormatted(wasEmpty: str.IsEmpty);
     }
 
     public void AppendFormatted<T>(T number) where T : INumber<T>
     {
         writer.Write(number?.ToString());
+        AfterAppendFormatted(wasEmpty: false);
+    }
+
+    void AfterAppendFormatted(bool wasEmpty)
+    {
         writer.CurrentIndentSize -= temporaryInterpolationIndentation;
         temporaryInterpolationIndentation = 0;
-        temporaryNewlineDeduplication = writer.CurrentColumn == 0;
+
+        if (!wasEmpty)
+            prefixNewlinesToTrim = 0;
+
+        // If the printed text ends with a newline,
+        // skip ("deduplicate") one newline in the next AppendLiteral call
+        if (!wasEmpty && writer.CurrentColumn == 0)
+            prefixNewlinesToTrim++;
     }
 }

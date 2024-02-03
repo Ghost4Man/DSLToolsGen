@@ -58,6 +58,29 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
     }
 
     [Fact]
+    public void given_1_empty_rule_and_namespace_config_ー_generates_prolog_and_using_and_namespace_declaration()
+    {
+        AstConfiguration config = new() { Namespace = "Foo.AST", AntlrNamespace = "Foo.Parser" };
+        AstCodeGenerator g = GetGeneratorForGrammar($$"""
+            {{grammarProlog}}
+            break : 'break' ;
+            """, config);
+        Assert.StartsWith("""
+            #nullable enable
+            using System;
+            using System.Collections.Generic;
+            using Foo.Parser;
+
+            namespace Foo.AST;
+
+            public partial interface IAstNode { }
+
+            public partial record Break : IAstNode;
+            """,
+            ModelToString(g.GenerateAstCodeModel(), config).TrimEnd());
+    }
+
+    [Fact]
     public void given_1_rule_with_labeled_ID_tokens_ー_generates_record_with_2_string_properties()
     {
         AstCodeGenerator g = GetGeneratorForGrammar($$"""

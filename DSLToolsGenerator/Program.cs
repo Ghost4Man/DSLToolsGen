@@ -99,6 +99,7 @@ bool TryParseGrammarAndReportErrors(FileInfo grammarFile,
     try
     {
         grammar = Grammar.ParseFile(grammarFile.FullName);
+        grammar.Analyze();
     }
     catch (IOException ex)
     {

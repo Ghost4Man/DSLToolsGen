@@ -259,6 +259,7 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
         string grammarCode, SyntaxHighlightingConfiguration? config = null)
     {
         var grammar = Antlr4Ast.Grammar.Parse(grammarCode);
+        grammar.Analyze();
         Assert.Empty(grammar.ErrorMessages);
         return (new TmLanguageGenerator(grammar, handleDiagnostic, config ?? new()), grammar);
 

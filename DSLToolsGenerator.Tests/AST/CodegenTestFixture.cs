@@ -5,6 +5,7 @@ public abstract class CodegenTestFixture(ITestOutputHelper testOutput)
     protected AstCodeGenerator GetGeneratorForGrammar(string grammarCode, AstConfiguration? config = null)
     {
         var grammar = Antlr4Ast.Grammar.Parse(grammarCode);
+        grammar.Analyze();
         Assert.Empty(grammar.ErrorMessages);
         return new AstCodeGenerator(grammar, handleDiagnostic, config ?? new());
 

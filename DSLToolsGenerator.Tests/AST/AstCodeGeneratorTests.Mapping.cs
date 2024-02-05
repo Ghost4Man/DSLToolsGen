@@ -42,6 +42,25 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
     }
 
     [Fact]
+    public void given_parser_grammar_ー_generates_correct_parser_class_references()
+    {
+        AstCodeGenerator g = GetGeneratorForGrammar($$"""
+            parser grammar FooParser;
+            stat : 'break' ;
+            """);
+        Assert.Equal("""
+            public class AstBuilder : FooParserBaseVisitor<IAstNode>
+            {
+                public override Statement VisitStat(FooParser.StatContext context)
+                {
+                    return new Statement();
+                }
+            }
+            """,
+            ModelToString(g.GenerateAstCodeModel().AstBuilder).TrimEnd());
+    }
+
+    [Fact]
     public void given_1_rule_with_multiple_ID_token_refs_ー_gets_mapped_from_Text_of_indexed_tokens()
     {
         AstCodeGenerator g = GetGeneratorForGrammar($$"""

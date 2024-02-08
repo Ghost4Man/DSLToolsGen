@@ -181,15 +181,18 @@ public partial class AstCodeGenerator
         Debug.WriteLine($"element of type {element.GetType().Name}: {element}");
 
         rest = elementSpan[1..];
-        bool isRepeated = parentIsRepeated || element.IsMany();
         bool isOptional = parentIsOptional || element.IsOptional();
+        bool isRepeated = parentIsRepeated || element.IsMany() // e.g. `X+`
+            || (element.Label is not null && element.LabelKind is LabelKind.PlusAssign); // e.g. `xs+=X`
 
         // block to limit the scope of variables in patterns
         {
             // e.g.  TOK (',' TOK)*  or  rule (COMMA rule)+
-            if (elementSpan is [var a and (RuleRef or TokenRef), Block([Alternative([var delimiter, var b])]) block, ..var newRest]
-                && RuleOrTokenRefsAreEqual(a, b)
-                && !a.IsMany() && a.Label is null // we already know they are equal, so no need to check both
+            if (elementSpan is [var a and (RuleRef or TokenRef),
+                    Block([Alternative([var delimiter, var b])]) block,
+                    .. var newRest]
+                && RuleOrTokenRefsAreEqual(a, b) // now we can just validate a (since they're equal):
+                && !a.IsMany() && (a.Label is null || a.LabelKind is LabelKind.PlusAssign)
                 && block.IsMany()
                 && (delimiter is Literal || (delimiter is TokenRef t && !IsTokenTextImportant(t))))
             {
@@ -201,15 +204,17 @@ public partial class AstCodeGenerator
             }
         }
 
-        if (element is RuleRef ruleRef)
+        if (element is RuleRef ruleRef) // e.g. expr in `print : 'print' expr ;`
         {
             if (ruleRef.GetRuleOrNull(grammar) is Rule rule)
             {
                 Lazy<NodeClassModel> nodeClass = new(() => FindOrGenerateAstNodeClass(rule));
                 string propertyName = makePropertyName(element, rule.Name, list: isRepeated);
                 return [isRepeated
-                    ? new NodeReferenceListPropertyModel(propertyName, element.Label, nodeClass)
-                    : new NodeReferencePropertyModel(propertyName, element.Label, nodeClass, isOptional)];
+                    ? new NodeReferenceListPropertyModel(propertyName,
+                        createMappingSource(element), nodeClass)
+                    : new NodeReferencePropertyModel(propertyName,
+                        createMappingSource(element), nodeClass, isOptional)];
             }
             else
             {
@@ -223,23 +228,26 @@ public partial class AstCodeGenerator
             ResolvedTokenRef resolvedTokenRef = Resolve(tokenRef);
             string propertyName = makePropertyName(element, tokenRef.Name, list: isRepeated);
             return [isRepeated
-                ? new TokenTextListPropertyModel(propertyName, element.Label, resolvedTokenRef)
-                : new TokenTextPropertyModel(propertyName, element.Label, resolvedTokenRef, isOptional)];
+                ? new TokenTextListPropertyModel(propertyName,
+                    createMappingSource(element), resolvedTokenRef)
+                : new TokenTextPropertyModel(propertyName,
+                    createMappingSource(element), resolvedTokenRef, isOptional)];
         }
         else if (element is TokenRef or Literal
             && element.IsOptional()
-            && element.Label is string label)
+            && element.Label is not null) // e.g. `classDecl : isAbstract='abstract'? ID ;`
         {
             string propertyName = makePropertyName(element, null!, list: false);
             ResolvedTokenRef resolvedToken = element switch {
                 Literal literal => Resolve(literal),
                 TokenRef tokenRef_ => Resolve(tokenRef_),
             };
-            Debug.Assert(resolvedToken != null); // TODO: what about implicit tokens in combined grammars?
+            Debug.Assert(resolvedToken != null);
             return [new OptionalTokenPropertyModel(
                 Name: propertyName.StartsWithAny("Is", "Has", "Does", "Do", "Should", "Can", "Will")
-                    ? propertyName : $"Is{propertyName}",
-                Label: label,
+                        ? propertyName
+                        : $"Is{propertyName}",
+                Source: createMappingSource(element),
                 Token: resolvedToken
             )];
         }
@@ -253,11 +261,14 @@ public partial class AstCodeGenerator
 
         string makePropertyName(SyntaxElement element, string refName, bool list)
         {
-            // TODO: move the conversion to PascalCase into CSharpModelWriter
             string baseName = (element.Label ?? refName)
                 .Trim('_'); // trim any underscores used for avoiding keywords ('public', 'import', etc.)
+
+            // TODO: move the conversion to PascalCase into CSharpModelWriter
             string propName = ToPascalCase(ExpandAllAbbreviations(baseName));
-            if (list)
+
+            // pluralize - except for list labels (e.g. `then+=stmt`)
+            if (list && element.LabelKind is not LabelKind.PlusAssign)
             {
                 string pluralized = propName.Pluralize(inputIsKnownToBeSingular: false);
                 return (propName == pluralized && element.Label is null)
@@ -268,6 +279,11 @@ public partial class AstCodeGenerator
             else
                 return propName;
         }
+
+        ValueMappingSource createMappingSource(SyntaxElement element)
+            => element.Label is not null
+                ? new ValueMappingSource.FromLabel(element.Label, element.LabelKind)
+                : new ValueMappingSource.FromGetter();
     }
 
     bool RuleOrTokenRefsAreEqual(SyntaxElement first, SyntaxElement second)
@@ -330,7 +346,17 @@ public partial class AstCodeGenerator
                     return;
 
                 var duplicateProperties = duplicateGroup.ToList();
-                if (duplicateProperties is [var left, var right])
+
+                // if the properties are mapped from a labeled element, merge them into a single property
+                if (duplicateProperties[0].Source is ValueMappingSource.FromLabel source)
+                {
+                    Debug.Assert(duplicateProperties.All(p => p.Source == source),
+                        "found multiple properties with same name but different mapping source");
+                    // keep just the first property, remove the others
+                    propertyList.RemoveAll(p =>
+                        p.Source == source && !ReferenceEquals(p, duplicateProperties[0]));
+                }
+                else if (duplicateProperties is [var left, var right])
                 {
                     RenameProperty(left, $"Left{left.Name}");
                     RenameProperty(right, $"Right{right.Name}");

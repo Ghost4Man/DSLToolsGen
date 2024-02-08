@@ -94,7 +94,7 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             {
                 public override Statement VisitStat(FooParser.StatContext context)
                 {
-                    var Identifiers = Array.ConvertAll(context.ID(), t => t.GetText());
+                    var Identifiers = context.ID().Select(t => t.GetText()).ToList();
                     return new Statement(Identifiers);
                 }
             }
@@ -114,7 +114,7 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             {
                 public override Print VisitPrint(FooParser.PrintContext context)
                 {
-                    var Identifiers = Array.ConvertAll(context.ID(), t => t.GetText());
+                    var Identifiers = context.ID().Select(t => t.GetText()).ToList();
                     return new Print(Identifiers);
                 }
             }
@@ -254,11 +254,40 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
     }
 
     [Fact]
+    public void given_1_rule_with_multiple_list_labels_ー_gets_mapped_from_list_fields()
+    {
+        AstCodeGenerator g = GetGeneratorForGrammar($$"""
+            {{grammarProlog}}
+            magicExpr : names+=ID values+=expr '%'
+                       (names+=ID values+=expr)?
+                       ('from' sources+=ID+)? ;
+            expr : ID ;
+            """);
+        Assert.Equal($$"""
+            public class AstBuilder : FooBaseVisitor<IAstNode>
+            {
+                public override MagicExpression VisitMagicExpr(FooParser.MagicExprContext context)
+                {
+                    var Names = context._names.Select(t => t.Text).ToList();
+                    var Values = context._values.Select(VisitExpr).ToList();
+                    var Sources = context._sources.Select(t => t.Text).ToList();
+                    return new MagicExpression(Names, Values, Sources);
+                }
+            
+                {{visitMethodForSimpleIdExpression}}
+            }
+            """,
+            ModelToString(g.GenerateAstCodeModel().AstBuilder).TrimEnd());
+    }
+
+    [Fact]
     public void given_1_rule_with_labeled_rule_refs_ー_gets_mapped_from_visited_labeled_rule_contexts()
     {
         AstCodeGenerator g = GetGeneratorForGrammar($$"""
             {{grammarProlog}}
-            ifExpr : 'if' conds+=expr 'then' then+=expr ('elif' conds+=expr then+=expr)* ('else' elseExpr=expr)? ;
+            ifExpr : 'if' conds+=expr 'then' then+=expr
+                  ('elif' conds+=expr 'then' then+=expr)*
+                  ('else' elseExpr=expr)? ;
             expr : ID ;
             """);
         Assert.Equal($$"""
@@ -266,8 +295,8 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             {
                 public override IfExpression VisitIfExpr(FooParser.IfExprContext context)
                 {
-                    var Conditions = Array.ConvertAll(context._conds, VisitExpr);
-                    var Then = Array.ConvertAll(context._then, VisitExpr);
+                    var Conditions = context._conds.Select(VisitExpr).ToList();
+                    var Then = context._then.Select(VisitExpr).ToList();
                     var ElseExpression = context.elseExpr?.Accept(VisitExpr);
                     return new IfExpression(Conditions, Then, ElseExpression);
                 }

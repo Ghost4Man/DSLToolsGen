@@ -16,32 +16,32 @@ public partial interface IModelVisitor<in TArg>;
 public partial record AstCodeModel(IList<NodeClassModel> NodeClasses, AstBuilderModel AstBuilder) : IModel;
 
 [Acceptor<IModel>]
-public abstract partial record PropertyModel(string Name, string? Label) : IModel;
+public abstract partial record PropertyModel(string Name, ValueMappingSource Source) : IModel;
 
 [Acceptor<IModel>]
-public partial record NodeReferencePropertyModel(string Name, string? Label,
+public partial record NodeReferencePropertyModel(string Name, ValueMappingSource Source,
     // The Lazy is needed so that we don't get stuck while
     // fetching references to self (or mutual rule references).
     // This assumes we only access the NodeClass property after all NodeClasses are generated
     Lazy<NodeClassModel> NodeClass,
     bool Optional
-    ) : PropertyModel(Name, Label);
+    ) : PropertyModel(Name, Source);
 
 [Acceptor<IModel>]
-public partial record NodeReferenceListPropertyModel(string Name, string? Label,
-    Lazy<NodeClassModel> NodeClass) : PropertyModel(Name, Label);
+public partial record NodeReferenceListPropertyModel(string Name, ValueMappingSource Source,
+    Lazy<NodeClassModel> NodeClass) : PropertyModel(Name, Source);
 
 [Acceptor<IModel>]
-public partial record TokenTextPropertyModel(string Name, string? Label,
-    ResolvedTokenRef Token, bool Optional) : PropertyModel(Name, Label);
+public partial record TokenTextPropertyModel(string Name, ValueMappingSource Source,
+    ResolvedTokenRef Token, bool Optional) : PropertyModel(Name, Source);
 
 [Acceptor<IModel>]
-public partial record TokenTextListPropertyModel(string Name, string? Label,
-    ResolvedTokenRef Token) : PropertyModel(Name, Label);
+public partial record TokenTextListPropertyModel(string Name, ValueMappingSource Source,
+    ResolvedTokenRef Token) : PropertyModel(Name, Source);
 
 [Acceptor<IModel>]
-public partial record OptionalTokenPropertyModel(string Name, string? Label,
-    ResolvedTokenRef Token) : PropertyModel(Name, Label);
+public partial record OptionalTokenPropertyModel(string Name, ValueMappingSource Source,
+    ResolvedTokenRef Token) : PropertyModel(Name, Source);
 
 [Acceptor<IModel>]
 public partial record NodeClassModel(string Name, Rule ParserRule, Alternative? SourceAlt, IList<PropertyModel> Properties) : IModel
@@ -88,5 +88,16 @@ public partial record NodeClassModel(string Name, Rule ParserRule, Alternative? 
 public partial record AstBuilderModel(string AntlrGrammarName, string ParserClassName, IList<AstMappingModel> AstMapping) : IModel;
 
 public record AstMappingModel(Rule Rule, NodeClassModel Ast);
+
+/// <summary>
+/// Describes how to get a value for a property of the AST from the parse tree.
+/// </summary>
+public abstract record ValueMappingSource
+{
+    private ValueMappingSource() { }
+
+    public sealed record FromLabel(string Label, LabelKind Kind) : ValueMappingSource;
+    public sealed record FromGetter(int? Index = null) : ValueMappingSource;
+}
 
 public record ResolvedTokenRef(string? Name, Literal? Literal, Rule? LexerRule);

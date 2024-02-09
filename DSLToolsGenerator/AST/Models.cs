@@ -99,5 +99,3 @@ public abstract record ValueMappingSource
     public sealed record FromLabel(string Label, LabelKind Kind) : ValueMappingSource;
     public sealed record FromGetter(int? Index = null) : ValueMappingSource;
 }
-
-public record ResolvedTokenRef(string? Name, Literal? Literal, Rule? LexerRule);

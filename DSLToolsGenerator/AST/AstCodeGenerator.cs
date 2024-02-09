@@ -13,7 +13,6 @@ public partial class AstCodeGenerator
     readonly Grammar grammar;
     readonly Action<Diagnostic> diagnosticHandler;
     readonly AstConfiguration config;
-    readonly Dictionary<string, Rule> lexerRulesByLiteral;
 
     // Mapping from parser rules to codegen models of AST Node classes.
     // Does not include variants (derived classes) of (abstract) node classes
@@ -28,8 +27,6 @@ public partial class AstCodeGenerator
         this.grammar = parserGrammar;
         this.diagnosticHandler = diagnosticHandler;
         this.config = config;
-        this.lexerRulesByLiteral = parserGrammar.GetSingleTokenLexerRules()
-            .ToDictionary(r => r.Literal.Text, r => r.Rule);
     }
 
     public AstCodeModel GenerateAstCodeModel()
@@ -298,13 +295,7 @@ public partial class AstCodeGenerator
         };
     }
 
-    ResolvedTokenRef Resolve(Literal literal)
-    {
-        lexerRulesByLiteral.TryGetValue(literal.Text, out Rule? lexerRule);
-        return new(lexerRule?.Name, literal, lexerRule);
-        // TODO: we might need to try to generate a valid identifier from unnamed literals, including punctuation, etc.
-        //static string makeUpTokenNameForLiteral(Literal literal) => ?;
-    }
+    ResolvedTokenRef Resolve(Literal literal) => literal.Resolve(grammar);
 
     ResolvedTokenRef Resolve(TokenRef tokenRef)
     {

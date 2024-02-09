@@ -6,23 +6,27 @@ using Antlr4Ast;
 
 namespace DSLToolsGenerator;
 
+file class GrammarAttachedData
+{
+    // essentially a memory-leak-safe dictionary for attaching custom fields to a Grammar
+    public static readonly ConditionalWeakTable<Grammar, GrammarAttachedData> Storage = new();
+
+    public string? ParserClassName { get; set; }
+
+    public Dictionary<string, Rule> LexerRulesByLiteral { get; set; } = new();
+}
+
+public record ResolvedTokenRef(string? Name, Literal? Literal, Rule? LexerRule);
+
 static class GrammarExtensions
 {
-    class GrammarAttachedData
-    {
-        public string? ParserClassName { get; set; }
-    }
-
-    // essentially a memory-leak-safe dictionary for attaching custom fields to a Grammar
-    static readonly ConditionalWeakTable<Grammar, GrammarAttachedData> storage = new();
-
     /// <summary>
     /// Computes data for certain extension methods.
     /// Must be called before changing the <see cref="Grammar.Kind"/>.
     /// </summary>
     public static void Analyze(this Grammar grammar)
     {
-        storage.AddOrUpdate(grammar, new() {
+        GrammarAttachedData.Storage.AddOrUpdate(grammar, new() {
             // based on Grammar.getRecognizerName method in the ANTLR4 tool
             ParserClassName = grammar.Kind == GrammarKind.Full
                 ? grammar.Name + "Parser"
@@ -35,7 +39,7 @@ static class GrammarExtensions
         // this cannot be computed on the fly because the grammar's Kind
         // might have changed after importing the lexer grammar
 
-        storage.TryGetValue(grammar, out GrammarAttachedData? grammarData);
+        GrammarAttachedData.Storage.TryGetValue(grammar, out GrammarAttachedData? grammarData);
         if (grammarData?.ParserClassName is not string parserClassName)
         {
             throw new InvalidOperationException(
@@ -121,13 +125,6 @@ static class TokenRefExtensions
 {
     public static Rule? GetRuleOrNull(this TokenRef tokenRef, Grammar grammar)
         => grammar.TryGetRule(tokenRef.Name, out Rule? rule) ? rule : null;
-
-    public static bool IsMany(this SyntaxElement element)
-        => element.Suffix is SuffixKind.Plus or SuffixKind.Star
-            or SuffixKind.PlusNonGreedy or SuffixKind.StarNonGreedy;
-
-    public static bool IsOptional(this SyntaxElement element)
-        => element.Suffix is SuffixKind.Optional or SuffixKind.OptionalNonGreedy;
 }
 
 static class SyntaxNodeExtensions
@@ -138,6 +135,13 @@ static class SyntaxNodeExtensions
 
 static class SyntaxElementExtensions
 {
+    public static bool IsMany(this SyntaxElement element)
+        => element.Suffix is SuffixKind.Plus or SuffixKind.Star
+            or SuffixKind.PlusNonGreedy or SuffixKind.StarNonGreedy;
+
+    public static bool IsOptional(this SyntaxElement element)
+        => element.Suffix is SuffixKind.Optional or SuffixKind.OptionalNonGreedy;
+
     // Deconstruct extensions for pattern matching:
 
     public static void Deconstruct(this Block block, out IReadOnlyList<Alternative> alts) => alts = block.Items;
@@ -145,6 +149,19 @@ static class SyntaxElementExtensions
     public static void Deconstruct(this TokenRef tokenRef, out string name) => name = tokenRef.Name;
     public static void Deconstruct(this RuleRef ruleRef, out string name) => name = ruleRef.Name;
     public static void Deconstruct(this Literal literal, out string value) => value = literal.GetValue();
+}
+
+static class LiteralExtensions
+{
+    public static ResolvedTokenRef Resolve(this Literal literal, Grammar grammar)
+    {
+        var grammarData = GrammarAttachedData.Storage.GetOrCreateValue(grammar);
+        grammarData.LexerRulesByLiteral ??= grammar.GetSingleTokenLexerRules()
+            .ToDictionary(r => r.Literal.Text, r => r.Rule);
+
+        Rule? lexerRule = grammarData.LexerRulesByLiteral.GetValueOrDefault(literal.Text);
+        return new(lexerRule?.Name, literal, lexerRule);
+    }
 
     /// <summary>
     /// Evaluates the contents of this literal including any escape

@@ -89,6 +89,16 @@ static class EnumerableExtensions
 
     public static string MakeString<T>(this IEnumerable<T> items, string prefix, string separator, string suffix)
         => prefix + string.Join(separator, items) + suffix;
+
+    // a variant of SingleOrDefault that doesn't throw an exception if there's more than 1 item
+    public static T? SingleOrDefaultIfMore<T>(this IEnumerable<T> items)
+    {
+        var enumerator = items.GetEnumerator();
+        if (!enumerator.MoveNext()) return default; // empty
+        var first = enumerator.Current;
+        if (enumerator.MoveNext()) return default; // more than one
+        return first; // exactly one
+    }
 }
 
 public static class ActionExtensions

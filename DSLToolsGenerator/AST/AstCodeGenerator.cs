@@ -278,9 +278,17 @@ public partial class AstCodeGenerator
         }
 
         ValueMappingSource createMappingSource(SyntaxElement element)
-            => element.Label is not null
+        {
+            return element.Label is not null
                 ? new ValueMappingSource.FromLabel(element.Label, element.LabelKind)
-                : new ValueMappingSource.FromGetter();
+                : new ValueMappingSource.FromGetter(
+                    nullIfSingleton(element.GetElementIndex()));
+
+            // e.g. emit code like `context.expr()` instead of `context.expr(0)`
+            // if the element is the only reference to the `expr` rule in `context`
+            int? nullIfSingleton(ElementIndexInfo index)
+                => element.IsOnlyOfType() ? null : index.IndexByType;
+        }
     }
 
     bool RuleOrTokenRefsAreEqual(SyntaxElement first, SyntaxElement second)

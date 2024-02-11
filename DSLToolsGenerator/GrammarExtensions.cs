@@ -1,8 +1,12 @@
-﻿using System.Globalization;
+﻿using System.Collections.Immutable;
+using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 
 using Antlr4Ast;
+
+using DSLToolsGenerator;
 
 namespace DSLToolsGenerator;
 
@@ -15,6 +19,23 @@ file class GrammarAttachedData
 
     public Dictionary<string, Rule> LexerRulesByLiteral { get; set; } = new();
 }
+
+file class SyntaxElementAttachedData
+{
+    public static readonly ConditionalWeakTable<SyntaxElement, SyntaxElementAttachedData> Storage = new();
+
+    public ElementIndexInfo? Index { get; set; }
+
+    public bool? IsOnlyOfType { get; set; }
+}
+
+/// <summary>
+/// Stores the indices of this element within the enclosing ANTLR rule context.
+/// For example, for an <c>ID</c> token,
+/// <c>IndexByType</c> says that it is the nth <c>ID</c> token in the parse tree
+/// and <c>ChildIndex</c> says that it is the nth child node of the parse tree.
+/// </summary>
+public record struct ElementIndexInfo(int? IndexByType, int? ChildIndex);
 
 public record ResolvedTokenRef(string? Name, Literal? Literal, Rule? LexerRule);
 
@@ -30,8 +51,181 @@ static class GrammarExtensions
             // based on Grammar.getRecognizerName method in the ANTLR4 tool
             ParserClassName = grammar.Kind == GrammarKind.Full
                 ? grammar.Name + "Parser"
-                : grammar.Name
+                : grammar.Name,
         });
+
+        grammar.ParserRules.ForEach(AssignElementIndices);
+    }
+
+    record struct IndexCounterState(
+        // It is not always possible to assign an unambiguous index
+        // to an element (e.g. after a repeated (star) block)
+        (int count, bool ambiguous) ChildCounter,
+        ImmutableDictionary<string, (int count, bool ambiguous)> CounterPerTokenOrRuleType)
+    {
+        public static IndexCounterState Combine(IEnumerable<IndexCounterState> states)
+        {
+            var tokenOrRuleTypes = states
+                .SelectMany(s => s.CounterPerTokenOrRuleType.Keys)
+                .Distinct();
+
+            (int count, bool ambiguous) value = default; // workaround (cannot use out param from select)
+            return new IndexCounterState(
+                ChildCounter: combine(states.Select(s => s.ChildCounter)),
+                CounterPerTokenOrRuleType:
+                    tokenOrRuleTypes.ToImmutableDictionary(t => t, t => combine(
+                        // Compute agreement only among those states (paths)
+                        // that have an index for that token/rule type
+                        from state in states
+                        where state.CounterPerTokenOrRuleType.TryGetValue(t, out value)
+                        select value
+                    )));
+
+            static (int count, bool ambiguous) combine(IEnumerable<(int count, bool ambiguous)> votes)
+            {
+                int? countAgreement = agreementOrNull(votes.Select(v => (int?)v.count));
+                int count = countAgreement ?? votes.Max(v => v.count);
+                bool ambiguous = countAgreement == null || votes.Any(v => v.ambiguous);
+                return (count, ambiguous);
+            }
+
+            // [1] -> 1
+            // [2,2,2,2] -> 2
+            // [1,2] -> null
+            // [null] -> null
+            // [1,null,1] -> null
+            static int? agreementOrNull(IEnumerable<int?> votes)
+                => votes.Distinct().SingleOrDefaultIfMore();
+        }
+    }
+
+    static void AssignElementIndices(Rule parserRule)
+    {
+        var emptyState = new IndexCounterState((0, ambiguous: false),
+            ImmutableDictionary<string, (int count, bool ambiguous)>.Empty);
+
+        var alts = parserRule.AlternativeList.Items;
+        if (alts is [Alternative { ParserLabel: not null }, ..])
+        {
+            // For rules with labeled alternatives,
+            // each alternative gets its own ParserRuleContext, so
+            // the "only-ness" is considered per-alternative, not per-rule
+            foreach (var alt in alts)
+            {
+                var state = emptyState;
+                var endState = assignElementIndicesInAlt(alt, state);
+                markSingletons(alt.GetAllDescendants(), endState);
+            }
+        }
+        else
+        {
+            var state = emptyState;
+            var endState = assignElementIndices(parserRule.AlternativeList, state);
+            // for unlabeled alternatives, an element is a singleton iff
+            // it's a singleton in all of the alternatives
+            markSingletons(parserRule.GetAllDescendants(), endState);
+        }
+
+        static IndexCounterState assignElementIndicesInAlt(
+            Alternative alt, IndexCounterState startState,
+            bool parentIsOptional = false, bool parentIsRepeated = false)
+        {
+            return alt.Elements.Aggregate(startState, (s, el) =>
+                assignElementIndices(el, s, parentIsOptional, parentIsRepeated));
+        }
+
+        static IndexCounterState assignElementIndices(
+            SyntaxElement element, IndexCounterState startState,
+            bool parentIsOptional = false, bool parentIsRepeated = false)
+        {
+            var state = startState;
+
+            if (element is AlternativeList { Items: var alts })
+            {
+                return IndexCounterState.Combine(alts.Select(a =>
+                    assignElementIndicesInAlt(a, state, element.IsOptional(), element.IsMany())));
+            }
+
+            if (element is EmptyElement)
+                return state;
+
+            if (element is not (Literal or TokenRef or RuleRef or DotElement))
+            {
+                Debug.Fail("encountered an unexpected grammar AST node type: " +
+                    element.GetType().Name);
+                return state;
+            }
+
+            string? refName = getRefName(element);
+            (int count, bool ambiguous) childCounter = state.ChildCounter;
+            (int count, bool ambiguous) counterPerType = state.CounterPerTokenOrRuleType
+                .GetValueOrDefault(refName ?? "", (0, ambiguous: false));
+            ElementIndexInfo newIndex;
+            newIndex = new(toIndex(counterPerType), toIndex(childCounter));
+
+            if (element.IsOptional() || parentIsOptional)
+            {
+                childCounter.ambiguous = true;
+                counterPerType.ambiguous = true;
+            }
+            else if (element.IsMany() || parentIsRepeated)
+            {
+                newIndex = new(null, null);
+                childCounter = (int.MaxValue, ambiguous: true);
+                counterPerType = (int.MaxValue, ambiguous: true);
+            }
+
+            setElementIndex(element, newIndex);
+            tryIncrement(ref childCounter.count);
+            tryIncrement(ref counterPerType.count);
+
+            state.ChildCounter = childCounter;
+            if (refName is not null)
+            {
+                state.CounterPerTokenOrRuleType =
+                    state.CounterPerTokenOrRuleType.SetItem(refName, counterPerType);
+            }
+
+            return state;
+
+            static int? toIndex((int count, bool ambiguous) counter)
+                => counter.ambiguous ? null : counter.count;
+
+            static void tryIncrement(ref int counter)
+            {
+                if (counter != int.MaxValue)
+                    counter++;
+            }
+        }
+
+        static void markSingletons(IEnumerable<SyntaxNode> nodes, IndexCounterState endState)
+        {
+            var singletons = nodes.OfType<SyntaxElement>()
+                .Where(n => getRefName(n) is string refName
+                            && endState.CounterPerTokenOrRuleType[refName].count == 1)
+                .WhereNotNull();
+
+            foreach (var singleton in singletons)
+            {
+                var elementData = SyntaxElementAttachedData.Storage.GetOrCreateValue(singleton);
+                elementData.IsOnlyOfType = true;
+            }
+        }
+
+        static string? getRefName(SyntaxNode node)
+            => (node as RuleRef)?.Name ?? (node as TokenRef)?.Name;
+
+        static void setElementIndex(SyntaxElement element, ElementIndexInfo index)
+        {
+            var elementData = SyntaxElementAttachedData.Storage.GetOrCreateValue(element);
+            elementData.Index = index;
+            elementData.IsOnlyOfType = false;
+
+            foreach (var descendant in element.GetAllDescendants().OfType<SyntaxElement>())
+            {
+                setElementIndex(descendant, default);
+            }
+        }
     }
 
     public static string GetParserClassName(this Grammar grammar)
@@ -130,7 +324,10 @@ static class TokenRefExtensions
 static class SyntaxNodeExtensions
 {
     public static IEnumerable<SyntaxNode> GetAllDescendants(this SyntaxNode node)
-        => node.Children().SelectMany(GetAllDescendants).Prepend(node);
+        => node.Children().SelectMany(GetAllDescendantsAndSelf);
+
+    public static IEnumerable<SyntaxNode> GetAllDescendantsAndSelf(this SyntaxNode node)
+        => node.Children().SelectMany(GetAllDescendantsAndSelf).Prepend(node);
 }
 
 static class SyntaxElementExtensions
@@ -141,6 +338,40 @@ static class SyntaxElementExtensions
 
     public static bool IsOptional(this SyntaxElement element)
         => element.Suffix is SuffixKind.Optional or SuffixKind.OptionalNonGreedy;
+
+    /// <summary>
+    /// Retrieves an index of this rule or token reference or literal
+    /// within the enclosing ANTLR rule context.
+    /// This index can be used to retrieve the corresponding parse tree node
+    /// from an ANTLR parse tree.
+    /// <para>
+    ///   It is necessary to call
+    ///   <see cref="GrammarExtensions.Analyze(Grammar)"/> on the grammar first.
+    /// </para>
+    /// </summary>
+    public static ElementIndexInfo GetElementIndex(this SyntaxElement element)
+    {
+        SyntaxElementAttachedData.Storage.TryGetValue(element, out var elementData);
+        return elementData?.Index
+            ?? throw new InvalidOperationException(
+                "this extension method requires first calling Analyze on the grammar");
+    }
+
+    /// <summary>
+    /// Gets a value indicating whether the element is
+    /// the only token/rule of its type in the rule context.
+    /// <para>
+    ///   It is necessary to call
+    ///   <see cref="GrammarExtensions.Analyze(Grammar)"/> on the grammar first.
+    /// </para>
+    /// </summary>
+    public static bool IsOnlyOfType(this SyntaxElement element)
+    {
+        SyntaxElementAttachedData.Storage.TryGetValue(element, out var elementData);
+        return elementData?.IsOnlyOfType
+            ?? throw new InvalidOperationException(
+                "this extension method requires first calling Analyze on the grammar");
+    }
 
     // Deconstruct extensions for pattern matching:
 

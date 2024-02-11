@@ -65,7 +65,7 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
     {
         AstCodeGenerator g = GetGeneratorForGrammar($$"""
             {{grammarProlog}}
-            stat : 'import' ID ('from' (ID | ID '.' ID) | 'as' ID)? ;
+            stat : 'import' ID 'from' ID ('as' ID '.' ID)? ;
             """);
         Assert.Equal("""
             public class AstBuilder : FooBaseVisitor<IAstNode>
@@ -73,9 +73,10 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
                 public override Statement VisitStat(FooParser.StatContext context)
                 {
                     var Identifier1 = context.ID(0).GetText();
-                    var Identifier2 = context.ID(1)?.GetText();
+                    var Identifier2 = context.ID(1).GetText();
                     var Identifier3 = context.ID(2)?.GetText();
-                    return new Statement(Identifier1, Identifier2, Identifier3);
+                    var Identifier4 = context.ID(3)?.GetText();
+                    return new Statement(Identifier1, Identifier2, Identifier3, Identifier4);
                 }
             }
             """,

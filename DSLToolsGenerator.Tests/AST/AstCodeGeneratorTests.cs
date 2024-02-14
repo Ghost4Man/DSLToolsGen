@@ -433,4 +433,26 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             """,
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }
+
+    [Fact]
+    public void given_setting_for_node_class_naming_ー_generated_class_names_uses_given_prefix_and_suffix()
+    {
+        AstCodeGenerator g = GetGeneratorForGrammar($$"""
+            {{grammarProlog}}
+            printStmt : 'print' expr ;
+            expr : STR_LIT       #stringLiteral
+                 | expr '+' expr #addExpr
+                 ;
+            """,
+            new AstConfiguration {
+                NodeClassNaming = new() { Prefix = "My", Suffix = "Node" }
+            });
+        Assert.Equal("""
+            public partial record MyPrintStatementNode(MyExpressionNode Expression) : IAstNode;
+            public abstract partial record MyExpressionNode : IAstNode;
+                public partial record MyStringLiteralNode(string StringLiteral) : MyExpressionNode;
+                public partial record MyAddExpressionNode(MyExpressionNode LeftExpression, MyExpressionNode RightExpression) : MyExpressionNode;
+            """,
+            ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
+    }
 }

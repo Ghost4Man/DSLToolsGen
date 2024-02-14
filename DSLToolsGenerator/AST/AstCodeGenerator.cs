@@ -57,7 +57,9 @@ public partial class AstCodeGenerator
             // use null to mark this as "currently being generated" to prevent stack overflow
             nodeClassesByRule[parserRule] = null!;
 
-            string className = GetGeneratedClassName(parserRule);
+            var (prefix, suffix) = (config.NodeClassNaming.Prefix, config.NodeClassNaming.Suffix);
+
+            string className = prefix + GetGeneratedClassName(parserRule) + suffix;
             List<Alternative> alts = parserRule.AlternativeList.Items;
 
             if (alts is [Alternative singleAlt])
@@ -69,7 +71,7 @@ public partial class AstCodeGenerator
                 var altNames = autoNameAlternatives(parserRule);
                 return new NodeClassModel(className, parserRule, SourceAlt: null, []) {
                     Variants = alts.Zip(altNames, (a, altName) => {
-                        string variantClassName = ToPascalCase(altName);
+                        string variantClassName = prefix + ToPascalCase(altName) + suffix;
                         return nodeClassModelForAlternative(parserRule, variantClassName, a);
                     }).ToList()
                 };

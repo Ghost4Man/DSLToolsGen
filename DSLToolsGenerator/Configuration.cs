@@ -21,6 +21,14 @@ namespace DSLToolsGenerator.AST
         public string? Namespace { get; init; }
 
         public string? AntlrNamespace { get; init; }
+
+        public ClassNamingOptions NodeClassNaming { get; init; } = new();
+    }
+
+    public record ClassNamingOptions
+    {
+        public string? Prefix { get; init; }
+        public string? Suffix { get; init; }
     }
 }
 

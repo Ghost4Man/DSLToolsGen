@@ -329,49 +329,45 @@ public partial class AstCodeGenerator
 
     List<PropertyModel> GeneratePostprocessedPropertyListFor(Alternative alt)
     {
-        List<PropertyModel> propertyList =
-            GeneratePropertiesForAll(alt.Elements, parentIsOptional: false, parentIsRepeated: false)
-            .ToList();
+        var properties = GeneratePropertiesForAll(alt.Elements,
+            parentIsOptional: false, parentIsRepeated: false).ToList();
 
-        postprocessPropertyList(propertyList);
+        return postprocessPropertyList(properties).ToList();
 
-        return propertyList;
-
-        static void postprocessPropertyList(List<PropertyModel> propertyList)
+        static IEnumerable<PropertyModel> postprocessPropertyList(List<PropertyModel> propertyList)
         {
-            foreach (var duplicateGroup in propertyList.GroupBy(p => p.Name))
+            foreach (var group in propertyList.GroupBy(p => p.Name))
             {
-                if (!duplicateGroup.Skip(1).Any())
-                    return;
+                if (group.Count() == 1)
+                {
+                    yield return group.Single();
+                    continue;
+                }
 
-                var duplicateProperties = duplicateGroup.ToList();
+                var duplicateProperties = group.ToList();
 
-                // if the properties are mapped from a labeled element, merge them into a single property
+                // If the properties are mapped from a labeled element,
+                // merge them into a single property
                 if (duplicateProperties[0].Source is ValueMappingSource.FromLabel source)
                 {
                     Debug.Assert(duplicateProperties.All(p => p.Source == source),
                         "found multiple properties with same name but different mapping source");
-                    // keep just the first property, remove the others
-                    propertyList.RemoveAll(p =>
-                        p.Source == source && !ReferenceEquals(p, duplicateProperties[0]));
+                    yield return duplicateProperties[0]; // keep just the first property
                 }
                 else if (duplicateProperties is [var left, var right])
                 {
-                    RenameProperty(left, $"Left{left.Name}");
-                    RenameProperty(right, $"Right{right.Name}");
+                    yield return left with { Name = $"Left{left.Name}" };
+                    yield return right with { Name = $"Right{right.Name}" };
                 }
                 else
                 {
                     for (int i = 0; i < duplicateProperties.Count; i++)
                     {
-                        RenameProperty(duplicateProperties[i], $"{duplicateProperties[i].Name}{i + 1}");
+                        yield return duplicateProperties[i] with {
+                            Name = $"{duplicateProperties[i].Name}{i + 1}"
+                        };
                     }
                 }
-            }
-
-            void RenameProperty(PropertyModel property, string newName)
-            {
-                propertyList[propertyList.IndexOf(property)] = property with { Name = newName };
             }
         }
     }

@@ -8,9 +8,14 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
         #nullable enable
         using System;
         using System.Collections.Generic;
+        """;
 
-        public partial interface IAstNode { }
-
+    const string expectedAstNodeClassDeclaration = """
+        public abstract partial record AstNode
+        {
+            public Antlr4.Runtime.ParserRuleContext? ParserContext { get; init; }
+            public abstract IEnumerable<AstNode?> GetChildNodes();
+        }
         """;
 
     const string grammarProlog = """
@@ -30,7 +35,7 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
      */
 
     [Fact]
-    public void given_1_empty_rule_ー_generates_prolog_and_empty_record_and_ASTBuilder_and_Extensions_class()
+    public void given_1_empty_rule_ー_generates_prolog_and_empty_record_and_AstBuilder_and_Extensions_class()
     {
         AstCodeGenerator g = GetGeneratorForGrammar($$"""
             {{grammarProlog}}
@@ -38,13 +43,28 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             """);
         Assert.Equal($$"""
             {{expectedProlog}}
-            public partial record Break : IAstNode;
 
-            public class AstBuilder : TestGrammarBaseVisitor<IAstNode>
+            {{expectedAstNodeClassDeclaration}}
+
+            public partial record Break : AstNode;
+
+            partial record Break
+            {
+                public new TestGrammarParser.BreakContext? ParserContext
+                {
+                    get => (TestGrammarParser.BreakContext?)base.ParserContext;
+                    init => base.ParserContext = value;
+                }
+
+                public override IEnumerable<AstNode?> GetChildNodes()
+                    => [];
+            }
+
+            public class AstBuilder : TestGrammarBaseVisitor<AstNode>
             {
                 public override Break VisitBreak(TestGrammarParser.BreakContext context)
                 {
-                    return new Break();
+                    return new Break() { ParserContext = context };
                 }
             }
 
@@ -65,17 +85,15 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             {{grammarProlog}}
             break : 'break' ;
             """, config);
-        Assert.StartsWith("""
-            #nullable enable
-            using System;
-            using System.Collections.Generic;
+        Assert.StartsWith($$"""
+            {{expectedProlog}}
             using Foo.Parser;
 
             namespace Foo.AST;
 
-            public partial interface IAstNode { }
+            {{expectedAstNodeClassDeclaration}}
 
-            public partial record Break : IAstNode;
+            public partial record Break : AstNode;
             """,
             ModelToString(g.GenerateAstCodeModel(), config).TrimEnd());
     }
@@ -88,7 +106,7 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             stat : 'set' varName=ID '=' expr=ID ;
             """);
         Assert.Equal("""
-            public partial record Statement(string VariableName, string Expression) : IAstNode;
+            public partial record Statement(string VariableName, string Expression) : AstNode;
             """,
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }
@@ -105,7 +123,7 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             """);
         Assert.Equal($$"""
             public partial record Statement({{expectedPropertyType}} Left{{expectedPropertyNameSuffix}}, {{
-                expectedPropertyType}} Right{{expectedPropertyNameSuffix}}) : IAstNode;
+                expectedPropertyType}} Right{{expectedPropertyNameSuffix}}) : AstNode;
             """,
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }
@@ -118,7 +136,7 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             stat : 'if' ID 'then' ID 'else' ID ;
             """);
         Assert.Equal("""
-            public partial record Statement(string Identifier1, string Identifier2, string Identifier3) : IAstNode;
+            public partial record Statement(string Identifier1, string Identifier2, string Identifier3) : AstNode;
             """,
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }
@@ -134,7 +152,7 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             print : 'print' {{tokenType}} ;
             """);
         Assert.Equal($$"""
-            public partial record Print({{expectedProperty}}) : IAstNode;
+            public partial record Print({{expectedProperty}}) : AstNode;
             """,
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }
@@ -147,7 +165,7 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             break : 'break' ;
             """);
         Assert.Equal("""
-            public partial record Break : IAstNode;
+            public partial record Break : AstNode;
             """,
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }
@@ -160,7 +178,7 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             fnDef : isPublic='public'? 'fn' 'foo' '{' '}' ;
             """);
         Assert.Equal("""
-            public partial record FunctionDefinition(bool IsPublic) : IAstNode;
+            public partial record FunctionDefinition(bool IsPublic) : AstNode;
             """,
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }
@@ -173,7 +191,7 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             importStmt : 'import' ID+ ;
             """);
         Assert.Equal("""
-            public partial record ImportStatement(IList<string> Identifiers) : IAstNode;
+            public partial record ImportStatement(IList<string> Identifiers) : AstNode;
             """,
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }
@@ -186,7 +204,7 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             assignment : (ID) '=' ((ID)) ;
             """);
         Assert.Equal("""
-            public partial record Assignment(string LeftIdentifier, string RightIdentifier) : IAstNode;
+            public partial record Assignment(string LeftIdentifier, string RightIdentifier) : AstNode;
             """,
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }
@@ -200,8 +218,8 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             expr : ID ;
             """);
         Assert.Equal("""
-            public partial record Assignment(Expression LeftExpression, Expression RightExpression) : IAstNode;
-            public partial record Expression(string Identifier) : IAstNode;
+            public partial record Assignment(Expression LeftExpression, Expression RightExpression) : AstNode;
+            public partial record Expression(string Identifier) : AstNode;
             """,
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }
@@ -219,8 +237,8 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             id : value=ID ;
             """);
         Assert.Equal($$"""
-            public partial record ImportStatement(IList<{{expectedListElementType}}> Identifiers) : IAstNode;
-            public partial record Identifier(string Value) : IAstNode;
+            public partial record ImportStatement(IList<{{expectedListElementType}}> Identifiers) : AstNode;
+            public partial record Identifier(string Value) : AstNode;
             """,
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }
@@ -233,7 +251,7 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             idInAList : ids+=ID ;
             """);
         Assert.Equal("""
-            public partial record IdentifierInAList(IList<string> Identifiers) : IAstNode;
+            public partial record IdentifierInAList(IList<string> Identifiers) : AstNode;
             """,
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }
@@ -246,7 +264,7 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             fnCall : 'call' '(' args+=ID ',' args+=ID ',' args+=ID ')' ;
             """);
         Assert.Equal("""
-            public partial record FunctionCall(IList<string> Arguments) : IAstNode;
+            public partial record FunctionCall(IList<string> Arguments) : AstNode;
             """,
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }
@@ -260,8 +278,8 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             expr : ID ;
             """);
         Assert.Equal("""
-            public partial record FunctionCall(IList<Expression> Arguments) : IAstNode;
-            public partial record Expression(string Identifier) : IAstNode;
+            public partial record FunctionCall(IList<Expression> Arguments) : AstNode;
+            public partial record Expression(string Identifier) : AstNode;
             """,
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }
@@ -276,9 +294,9 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             expr : ID ;
             """);
         Assert.Equal("""
-            public partial record FunctionDefinition(string Identifier, Command Command) : IAstNode;
-            public partial record Command(Expression Expression) : IAstNode;
-            public partial record Expression(string Identifier) : IAstNode;
+            public partial record FunctionDefinition(string Identifier, Command Command) : AstNode;
+            public partial record Command(Expression Expression) : AstNode;
+            public partial record Expression(string Identifier) : AstNode;
             """,
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }
@@ -293,9 +311,9 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             expr : ID ;
             """);
         Assert.Equal("""
-            public partial record FunctionDefinition(string Identifier, Command? Command) : IAstNode;
-            public partial record Command(Expression? Expression) : IAstNode;
-            public partial record Expression(string Identifier) : IAstNode;
+            public partial record FunctionDefinition(string Identifier, Command? Command) : AstNode;
+            public partial record Command(Expression? Expression) : AstNode;
+            public partial record Expression(string Identifier) : AstNode;
             """,
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }
@@ -310,9 +328,9 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             expr : ID ;
             """);
         Assert.Equal("""
-            public partial record FunctionDefinition(string Identifier, IList<Command> Commands) : IAstNode;
-            public partial record Command(IList<Expression> Expressions) : IAstNode;
-            public partial record Expression(string Identifier) : IAstNode;
+            public partial record FunctionDefinition(string Identifier, IList<Command> Commands) : AstNode;
+            public partial record Command(IList<Expression> Expressions) : AstNode;
+            public partial record Expression(string Identifier) : AstNode;
             """,
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }
@@ -325,7 +343,7 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             expr : ID | NUMBER | STR_LIT ;
             """);
         Assert.Equal("""
-            public abstract partial record Expression : IAstNode;
+            public abstract partial record Expression : AstNode;
                 public partial record IdentifierExpression(string Identifier) : Expression;
                 public partial record NumberExpression(string Number) : Expression;
                 public partial record StringLiteralExpression(string StringLiteral) : Expression;
@@ -344,8 +362,8 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
                  | STR_LIT #strLitExpr ;
             """);
         Assert.Equal("""
-            public partial record Command(Expression Expression) : IAstNode;
-            public abstract partial record Expression : IAstNode;
+            public partial record Command(Expression Expression) : AstNode;
+            public abstract partial record Expression : AstNode;
                 public partial record VariableReferenceExpression(string Identifier) : Expression;
                 public partial record NumericLiteralExpression(string Number) : Expression;
                 public partial record StringLiteralExpression(string StringLiteral) : Expression;
@@ -363,7 +381,7 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
                 expr : 'not'? expr ;
                 """);
             Assert.Equal("""
-                public partial record Expression(Expression Expression) : IAstNode;
+                public partial record Expression(Expression Expression) : AstNode;
                 """,
                 ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
         }
@@ -377,8 +395,8 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
                 expr : '{' cmd '}' ;
                 """);
             Assert.Equal("""
-                public partial record Command(Expression Expression) : IAstNode;
-                public partial record Expression(Command Command) : IAstNode;
+                public partial record Command(Expression Expression) : AstNode;
+                public partial record Expression(Command Command) : AstNode;
                 """,
                 ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
         }
@@ -400,18 +418,18 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
                 block : '{' stmt* '}' ;
                 """);
             Assert.Equal("""
-                public abstract partial record Statement : IAstNode;
+                public abstract partial record Statement : AstNode;
                     public partial record AssignmentStatement(Expression LeftExpression, Expression RightExpression) : Statement;
                     public partial record ExpressionStatement(Expression Expression) : Statement;
                     public partial record BlockStatement(Block Block) : Statement;
-                public abstract partial record Expression : IAstNode;
+                public abstract partial record Expression : AstNode;
                     public partial record AtomicExpression(string? Identifier, string? Number, string? StringLiteral) : Expression;
                     public partial record AddExpression(Expression LeftExpression, Expression RightExpression) : Expression;
                     public partial record FunctionCallExpression(Expression Expression, ArgumentList ArgumentList) : Expression;
                     public partial record LambdaExpression(ParameterList ParameterList, Block Block) : Expression;
-                public partial record ArgumentList(IList<Expression> Expressions) : IAstNode;
-                public partial record ParameterList(IList<string> Identifiers) : IAstNode;
-                public partial record Block(IList<Statement> Statements) : IAstNode;
+                public partial record ArgumentList(IList<Expression> Expressions) : AstNode;
+                public partial record ParameterList(IList<string> Identifiers) : AstNode;
+                public partial record Block(IList<Statement> Statements) : AstNode;
                 """,
                 ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
         }
@@ -427,9 +445,9 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             importDirective : 'import' ID ;
             """);
         Assert.Equal("""
-            public partial record Program(IList<Statement> Statements, IList<ImportDirective> Imports) : IAstNode;
-            public partial record Statement : IAstNode;
-            public partial record ImportDirective(string Identifier) : IAstNode;
+            public partial record Program(IList<Statement> Statements, IList<ImportDirective> Imports) : AstNode;
+            public partial record Statement : AstNode;
+            public partial record ImportDirective(string Identifier) : AstNode;
             """,
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }
@@ -448,8 +466,8 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
                 NodeClassNaming = new() { Prefix = "My", Suffix = "Node" }
             });
         Assert.Equal("""
-            public partial record MyPrintStatementNode(MyExpressionNode Expression) : IAstNode;
-            public abstract partial record MyExpressionNode : IAstNode;
+            public partial record MyPrintStatementNode(MyExpressionNode Expression) : AstNode;
+            public abstract partial record MyExpressionNode : AstNode;
                 public partial record MyStringLiteralNode(string StringLiteral) : MyExpressionNode;
                 public partial record MyAddExpressionNode(MyExpressionNode LeftExpression, MyExpressionNode RightExpression) : MyExpressionNode;
             """,

@@ -24,6 +24,9 @@ public abstract class CodeGeneratingModelVisitor(TextWriter output) : IModelVisi
     public void VisitAll<TModel>(IEnumerable<TModel> models, string separator, Action<TModel> visitAction)
         => VisitAll(models, () => Output.Write(separator), visitAction);
 
+    public void VisitAll<TModel>(IEnumerable<TModel> models, string separator, Func<TModel, string> textSelector)
+        => VisitAll(models, () => Output.Write(separator), m => Output.Write(textSelector(m)));
+
     public void VisitAll(IEnumerable<IModel> models, Action? separatorAction)
         => VisitAll(models, separatorAction, Visit);
 

@@ -51,7 +51,7 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
         Output.WriteCode($"""
             public {@abstract}partial record {nodeClass.Name}{
                     _ => generateRecordParameterList()} : {
-                    nodeClass.BaseClass?.Name ?? "IAstNode"};
+                    nodeClass.BaseClass?.Name ?? "AstNode"};
                 {_ => VisitAll(nodeClass.Variants, "")}
             """);
 
@@ -76,9 +76,16 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
 
             {{(config.Namespace is string ns ? $"namespace {ns};" : null)}}
 
-            public partial interface IAstNode { }
+            public abstract partial record AstNode
+            {
+                public Antlr4.Runtime.ParserRuleContext? ParserContext { get; init; }
+                public abstract IEnumerable<AstNode?> GetChildNodes();
+            }
 
             {{_ => VisitAll(astModel.NodeClasses, "")}}
+
+            {{_ => VisitAll(astModel.GetAllConcreteNodeClasses(), "\n",
+                nc => GenerateNodeClassBody(nc, astModel.AstBuilder.ParserClassName))}}
 
             {{_ => Visit(astModel.AstBuilder)}}
 
@@ -90,10 +97,48 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
             """);
     }
 
+    public void GenerateNodeClassBody(NodeClassModel nodeClass, string parserClassName)
+    {
+        string contextClassFullName = $"{parserClassName}.{nodeClass.SourceContextName}Context";
+
+        Output.WriteCode($$"""
+            partial record {{nodeClass.Name}}
+            {
+                public new {{contextClassFullName}}? ParserContext
+                {
+                    get => ({{contextClassFullName}}?)base.ParserContext;
+                    init => base.ParserContext = value;
+                }
+
+                public override IEnumerable<AstNode?> GetChildNodes()
+                    => {{_ => generateChildNodesCollectionExpression()}};
+            }
+            """);
+
+        void generateChildNodesCollectionExpression()
+        {
+            var nodeRefProperties = nodeClass.Properties
+                .Where(p => p is NodeReferencePropertyModel or NodeReferenceListPropertyModel)
+                .ToList();
+
+            if (nodeRefProperties is [NodeReferenceListPropertyModel singleProperty])
+                Output.WriteCodeInline($"this.{singleProperty.Name}");
+            else
+            {
+                Output.WriteCodeInline($"[{_ =>
+                    VisitAll(nodeRefProperties, ", ", p =>
+                        p is NodeReferenceListPropertyModel
+                            ? $"..this.{p.Name}" // use spread operator `..`
+                            : $"this.{p.Name}")
+                    }]");
+            }
+        }
+    }
+
     public override void Visit(AstBuilderModel astBuilderModel)
     {
         Output.WriteCode($$"""
-            public class AstBuilder : {{astBuilderModel.AntlrGrammarName}}BaseVisitor<IAstNode>
+            public class AstBuilder : {{astBuilderModel.AntlrGrammarName}}BaseVisitor<AstNode>
             {
                 {{_ => VisitAll(astBuilderModel.AstMapping, "\n", visit)}}
             }
@@ -117,9 +162,11 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
                 Output.WriteCode($$"""
                     public override {{astClass.Name}} Visit{{contextName}}({{contextClassName}} context)
                     {
-                        {{astClass.Properties.MakeString("\n", p =>
+                        {{_ => VisitAll(astClass.Properties, "\n", p =>
                             $"var {p.Name} = {GetCodeForExtractingValueFromParseTree(p)};")}}
-                        return new {{astClass.Name}}({{astClass.Properties.MakeString(", ", p => p.Name)}});
+                        return new {{astClass.Name}}({{
+                            _ => VisitAll(astClass.Properties, ", ", p => p.Name)
+                            }}) { ParserContext = context };
                     }
                     """);
             }

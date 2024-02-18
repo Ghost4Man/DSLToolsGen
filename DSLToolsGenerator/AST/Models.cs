@@ -13,7 +13,12 @@ public partial interface IModelVisitor;
 public partial interface IModelVisitor<in TArg>;
 
 [Acceptor<IModel>]
-public partial record AstCodeModel(IList<NodeClassModel> NodeClasses, AstBuilderModel AstBuilder) : IModel;
+public partial record AstCodeModel(IList<NodeClassModel> NodeClasses, AstBuilderModel AstBuilder) : IModel
+{
+    public IEnumerable<NodeClassModel> GetAllConcreteNodeClasses() => NodeClasses
+        .SelectMany(nc => nc.GetAllSubclassesAndSelf())
+        .Where(nc => !nc.IsAbstract);
+}
 
 [Acceptor<IModel>]
 public abstract partial record PropertyModel(string Name, ValueMappingSource Source) : IModel;
@@ -75,6 +80,9 @@ public partial record NodeClassModel(string Name, Rule ParserRule, Alternative? 
 
     // Visit{SourceContextName}, FooParser.{SourceContextName}Context, etc.
     public string SourceContextName => (SourceAlt?.ParserLabel ?? ParserRule.Name).Capitalize();
+
+    public IEnumerable<NodeClassModel> GetAllSubclassesAndSelf()
+        => Variants.SelectMany(nc => nc.GetAllSubclassesAndSelf()).Prepend(this);
 }
 
 /// <summary>

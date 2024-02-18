@@ -16,7 +16,7 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
         public override Expression VisitExpr(FooParser.ExprContext context)
         {
             var Identifier = context.ID().GetText();
-            return new Expression(Identifier);
+            return new Expression(Identifier) { ParserContext = context };
         }
     """.TrimStart();
 
@@ -28,13 +28,13 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             stat : 'swap' ID 'and' ID ;
             """);
         Assert.Equal("""
-            public class AstBuilder : FooBaseVisitor<IAstNode>
+            public class AstBuilder : FooBaseVisitor<AstNode>
             {
                 public override Statement VisitStat(FooParser.StatContext context)
                 {
                     var LeftIdentifier = context.ID(0).GetText();
                     var RightIdentifier = context.ID(1).GetText();
-                    return new Statement(LeftIdentifier, RightIdentifier);
+                    return new Statement(LeftIdentifier, RightIdentifier) { ParserContext = context };
                 }
             }
             """,
@@ -49,11 +49,11 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             stat : 'break' ;
             """);
         Assert.Equal("""
-            public class AstBuilder : FooParserBaseVisitor<IAstNode>
+            public class AstBuilder : FooParserBaseVisitor<AstNode>
             {
                 public override Statement VisitStat(FooParser.StatContext context)
                 {
-                    return new Statement();
+                    return new Statement() { ParserContext = context };
                 }
             }
             """,
@@ -68,7 +68,7 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             stat : 'import' ID 'from' ID ('as' ID '.' ID)? ;
             """);
         Assert.Equal("""
-            public class AstBuilder : FooBaseVisitor<IAstNode>
+            public class AstBuilder : FooBaseVisitor<AstNode>
             {
                 public override Statement VisitStat(FooParser.StatContext context)
                 {
@@ -76,7 +76,7 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
                     var Identifier2 = context.ID(1).GetText();
                     var Identifier3 = context.ID(2)?.GetText();
                     var Identifier4 = context.ID(3)?.GetText();
-                    return new Statement(Identifier1, Identifier2, Identifier3, Identifier4);
+                    return new Statement(Identifier1, Identifier2, Identifier3, Identifier4) { ParserContext = context };
                 }
             }
             """,
@@ -91,12 +91,12 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             stat : 'import' (ID '.')? ID ('from' (ID | ID '.' ID) | 'as' ID)? ;
             """);
         Assert.Equal("""
-            public class AstBuilder : FooBaseVisitor<IAstNode>
+            public class AstBuilder : FooBaseVisitor<AstNode>
             {
                 public override Statement VisitStat(FooParser.StatContext context)
                 {
                     var Identifiers = context.ID().Select(t => t.GetText()).ToList();
-                    return new Statement(Identifiers);
+                    return new Statement(Identifiers) { ParserContext = context };
                 }
             }
             """,
@@ -111,12 +111,12 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             print : 'print' ID+ ;
             """);
         Assert.Equal("""
-            public class AstBuilder : FooBaseVisitor<IAstNode>
+            public class AstBuilder : FooBaseVisitor<AstNode>
             {
                 public override Print VisitPrint(FooParser.PrintContext context)
                 {
                     var Identifiers = context.ID().Select(t => t.GetText()).ToList();
-                    return new Print(Identifiers);
+                    return new Print(Identifiers) { ParserContext = context };
                 }
             }
             """,
@@ -131,13 +131,13 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             stat : 'set' varName=ID '=' expr=ID ;
             """);
         Assert.Equal("""
-            public class AstBuilder : FooBaseVisitor<IAstNode>
+            public class AstBuilder : FooBaseVisitor<AstNode>
             {
                 public override Statement VisitStat(FooParser.StatContext context)
                 {
                     var VariableName = context.varName.Text;
                     var Expression = context.expr.Text;
-                    return new Statement(VariableName, Expression);
+                    return new Statement(VariableName, Expression) { ParserContext = context };
                 }
             }
             """,
@@ -152,13 +152,13 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             stat : 'var' varName=ID? ('=' expr=ID)? ;
             """);
         Assert.Equal("""
-            public class AstBuilder : FooBaseVisitor<IAstNode>
+            public class AstBuilder : FooBaseVisitor<AstNode>
             {
                 public override Statement VisitStat(FooParser.StatContext context)
                 {
                     var VariableName = context.varName?.Text;
                     var Expression = context.expr?.Text;
-                    return new Statement(VariableName, Expression);
+                    return new Statement(VariableName, Expression) { ParserContext = context };
                 }
             }
             """,
@@ -175,20 +175,20 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             expr : ID ;
             """);
         Assert.Equal($$"""
-            public class AstBuilder : FooBaseVisitor<IAstNode>
+            public class AstBuilder : FooBaseVisitor<AstNode>
             {
                 public override Assignment VisitAssignment(FooParser.AssignmentContext context)
                 {
                     var Lvalue = VisitLvalue(context.lvalue());
                     var Expression = VisitExpr(context.expr());
-                    return new Assignment(Lvalue, Expression);
+                    return new Assignment(Lvalue, Expression) { ParserContext = context };
                 }
 
                 public override Lvalue VisitLvalue(FooParser.LvalueContext context)
                 {
                     var Expression = VisitExpr(context.expr());
                     var Identifier = context.ID().GetText();
-                    return new Lvalue(Expression, Identifier);
+                    return new Lvalue(Expression, Identifier) { ParserContext = context };
                 }
 
                 {{visitMethodForSimpleIdExpression}}
@@ -207,20 +207,20 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             expr : ID ;
             """);
         Assert.Equal($$"""
-            public class AstBuilder : FooBaseVisitor<IAstNode>
+            public class AstBuilder : FooBaseVisitor<AstNode>
             {
                 public override Assignment VisitAssignment(FooParser.AssignmentContext context)
                 {
                     var Lvalue = VisitLvalue(context.lvalue());
                     var Expression = context.expr()?.Accept(VisitExpr);
-                    return new Assignment(Lvalue, Expression);
+                    return new Assignment(Lvalue, Expression) { ParserContext = context };
                 }
 
                 public override Lvalue VisitLvalue(FooParser.LvalueContext context)
                 {
                     var Expression = context.expr()?.Accept(VisitExpr);
                     var Identifier = context.ID().GetText();
-                    return new Lvalue(Expression, Identifier);
+                    return new Lvalue(Expression, Identifier) { ParserContext = context };
                 }
             
                 {{visitMethodForSimpleIdExpression}}
@@ -238,14 +238,14 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             expr : ID ;
             """);
         Assert.Equal($$"""
-            public class AstBuilder : FooBaseVisitor<IAstNode>
+            public class AstBuilder : FooBaseVisitor<AstNode>
             {
                 public override IfExpression VisitIfExpr(FooParser.IfExprContext context)
                 {
                     var Expression1 = VisitExpr(context.expr(0));
                     var Expression2 = VisitExpr(context.expr(1));
                     var Expression3 = context.expr(2)?.Accept(VisitExpr);
-                    return new IfExpression(Expression1, Expression2, Expression3);
+                    return new IfExpression(Expression1, Expression2, Expression3) { ParserContext = context };
                 }
             
                 {{visitMethodForSimpleIdExpression}}
@@ -265,14 +265,14 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             expr : ID ;
             """);
         Assert.Equal($$"""
-            public class AstBuilder : FooBaseVisitor<IAstNode>
+            public class AstBuilder : FooBaseVisitor<AstNode>
             {
                 public override MagicExpression VisitMagicExpr(FooParser.MagicExprContext context)
                 {
                     var Names = context._names.Select(t => t.Text).ToList();
                     var Values = context._values.Select(VisitExpr).ToList();
                     var Sources = context._sources.Select(t => t.Text).ToList();
-                    return new MagicExpression(Names, Values, Sources);
+                    return new MagicExpression(Names, Values, Sources) { ParserContext = context };
                 }
             
                 {{visitMethodForSimpleIdExpression}}
@@ -292,14 +292,14 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             expr : ID ;
             """);
         Assert.Equal($$"""
-            public class AstBuilder : FooBaseVisitor<IAstNode>
+            public class AstBuilder : FooBaseVisitor<AstNode>
             {
                 public override IfExpression VisitIfExpr(FooParser.IfExprContext context)
                 {
                     var Conditions = context._conds.Select(VisitExpr).ToList();
                     var Then = context._then.Select(VisitExpr).ToList();
                     var ElseExpression = context.elseExpr?.Accept(VisitExpr);
-                    return new IfExpression(Conditions, Then, ElseExpression);
+                    return new IfExpression(Conditions, Then, ElseExpression) { ParserContext = context };
                 }
             
                 {{visitMethodForSimpleIdExpression}}
@@ -317,14 +317,14 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             expr : ID ;
             """);
         Assert.Equal($$"""
-            public class AstBuilder : FooBaseVisitor<IAstNode>
+            public class AstBuilder : FooBaseVisitor<AstNode>
             {
                 public override IfExpression VisitIfExpr(FooParser.IfExprContext context)
                 {
                     var If = VisitExpr(context.@if);
                     var Do = VisitExpr(context.@do);
                     var Else = context.@else?.Accept(VisitExpr);
-                    return new IfExpression(If, Do, Else);
+                    return new IfExpression(If, Do, Else) { ParserContext = context };
                 }
             
                 {{visitMethodForSimpleIdExpression}}
@@ -344,7 +344,7 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             expr : ID ;
             """);
         Assert.Equal($$"""
-            public class AstBuilder : FooBaseVisitor<IAstNode>
+            public class AstBuilder : FooBaseVisitor<AstNode>
             {
                 public virtual Statement VisitStmt(FooParser.StmtContext context)
                     => (Statement)Visit(context);
@@ -353,13 +353,13 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
                 {
                     var Identifier = context.ID().GetText();
                     var Expression = VisitExpr(context.expr());
-                    return new AssignmentStatement(Identifier, Expression);
+                    return new AssignmentStatement(Identifier, Expression) { ParserContext = context };
                 }
 
                 public override PrintStatement VisitPrintStmt(FooParser.PrintStmtContext context)
                 {
                     var Expression = VisitExpr(context.expr());
-                    return new PrintStatement(Expression);
+                    return new PrintStatement(Expression) { ParserContext = context };
                 }
             
                 {{visitMethodForSimpleIdExpression}}

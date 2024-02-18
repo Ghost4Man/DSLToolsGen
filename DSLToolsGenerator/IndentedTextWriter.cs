@@ -81,6 +81,12 @@ public class IndentedTextWriter(TextWriter inner)
         if (CurrentColumn != 0) // ensure any output after this WriteCode call starts on a new line
             WriteLine("");
     }
+
+    public void WriteCodeInline([InterpolatedStringHandlerArgument("")] AutoIndentStringHandler interpHandler)
+    {
+        // the text was already written during the construction of the `interpHandler` argument
+        _ = interpHandler;
+    }
 }
 
 [InterpolatedStringHandler]

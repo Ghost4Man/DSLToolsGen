@@ -14,6 +14,7 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
         public abstract partial record AstNode
         {
             public Antlr4.Runtime.ParserRuleContext? ParserContext { get; init; }
+            public abstract bool IsMissing { get; }
             public abstract IEnumerable<AstNode?> GetChildNodes();
         }
         """;
@@ -35,7 +36,7 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
      */
 
     [Fact]
-    public void given_1_empty_rule_ー_generates_prolog_and_empty_record_and_AstBuilder_and_Extensions_class()
+    public void given_1_empty_rule_ー_generates_prolog_and_parameterless_node_class_and_AstBuilder_and_Extensions_class()
     {
         AstCodeGenerator g = GetGeneratorForGrammar($$"""
             {{grammarProlog}}
@@ -50,6 +51,9 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
 
             partial record Break
             {
+                public static readonly Break Missing = new();
+                public override bool IsMissing => ReferenceEquals(this, Missing);
+
                 public new TestGrammarParser.BreakContext? ParserContext
                 {
                     get => (TestGrammarParser.BreakContext?)base.ParserContext;
@@ -62,8 +66,12 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
 
             public class AstBuilder : TestGrammarBaseVisitor<AstNode>
             {
-                public override Break VisitBreak(TestGrammarParser.BreakContext context)
+                public string MissingTokenPlaceholderText { get; init; } = "\u2370"; // question mark in a box
+
+                public override Break VisitBreak(TestGrammarParser.BreakContext? context)
                 {
+                    if (context is null) return Break.Missing;
+
                     return new Break() { ParserContext = context };
                 }
             }
@@ -369,6 +377,37 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
                 public partial record StringLiteralExpression(string StringLiteral) : Expression;
             """,
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
+    }
+
+    [Fact]
+    public void given_rule_with_labeled_alts_ー_generates_extra_Missing_variant()
+    {
+        AstCodeGenerator g = GetGeneratorForGrammar($$"""
+            {{grammarProlog}}
+            expr : NUMBER   #numExpr
+                 | STR_LIT  #strExpr ;
+            """);
+        Assert.StartsWith($$"""
+            {{expectedProlog}}
+
+            {{expectedAstNodeClassDeclaration}}
+
+            public abstract partial record Expression : AstNode;
+                public partial record NumberExpression(string Number) : Expression;
+                public partial record StringExpression(string StringLiteral) : Expression;
+
+            partial record Expression
+            {
+                public static readonly Expression Missing = new MissingExpression();
+            }
+
+            public sealed partial record MissingExpression : Expression
+            {
+                public override bool IsMissing => true;
+                public override IEnumerable<AstNode?> GetChildNodes() => [];
+            }
+            """,
+            ModelToString(g.GenerateAstCodeModel()).TrimEnd());
     }
 
     public class RulesWithReferenceLoops(ITestOutputHelper testOutput) : CodegenTestFixture(testOutput)

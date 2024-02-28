@@ -15,9 +15,8 @@ public partial interface IModelVisitor<in TArg>;
 [Acceptor<IModel>]
 public partial record AstCodeModel(IList<NodeClassModel> NodeClasses, AstBuilderModel AstBuilder) : IModel
 {
-    public IEnumerable<NodeClassModel> GetAllConcreteNodeClasses() => NodeClasses
-        .SelectMany(nc => nc.GetAllSubclassesAndSelf())
-        .Where(nc => !nc.IsAbstract);
+    public IEnumerable<NodeClassModel> GetAllNodeClasses()
+        => NodeClasses.SelectMany(nc => nc.GetAllSubclassesAndSelf());
 }
 
 [Acceptor<IModel>]

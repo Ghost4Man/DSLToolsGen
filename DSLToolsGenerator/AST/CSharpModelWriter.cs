@@ -79,12 +79,13 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
             public abstract partial record AstNode
             {
                 public Antlr4.Runtime.ParserRuleContext? ParserContext { get; init; }
+                public abstract bool IsMissing { get; }
                 public abstract IEnumerable<AstNode?> GetChildNodes();
             }
 
             {{_ => VisitAll(astModel.NodeClasses, "")}}
 
-            {{_ => VisitAll(astModel.GetAllConcreteNodeClasses(), "\n",
+            {{_ => VisitAll(astModel.GetAllNodeClasses(), "\n",
                 nc => GenerateNodeClassBody(nc, astModel.AstBuilder.ParserClassName))}}
 
             {{_ => Visit(astModel.AstBuilder)}}
@@ -99,11 +100,40 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
 
     public void GenerateNodeClassBody(NodeClassModel nodeClass, string parserClassName)
     {
+        if (nodeClass.IsAbstract)
+            GenerateAbstractNodeClassBody(nodeClass);
+        else
+            GenerateConcreteNodeClassBody(nodeClass, parserClassName);
+    }
+
+    void GenerateAbstractNodeClassBody(NodeClassModel nodeClass)
+    {
+        Output.WriteCode($$"""
+            partial record {{nodeClass.Name}}
+            {
+                public static readonly {{nodeClass.Name}} Missing = new Missing{{nodeClass.Name}}();
+            }
+
+            public sealed partial record Missing{{nodeClass.Name}} : {{nodeClass.Name}}
+            {
+                public override bool IsMissing => true;
+                public override IEnumerable<AstNode?> GetChildNodes() => [];
+            }
+            """);
+    }
+
+    void GenerateConcreteNodeClassBody(NodeClassModel nodeClass, string parserClassName)
+    {
         string contextClassFullName = $"{parserClassName}.{nodeClass.SourceContextName}Context";
+        string @new = nodeClass.BaseClass != null ? "new " : "";
 
         Output.WriteCode($$"""
             partial record {{nodeClass.Name}}
             {
+                public static {{@new}}readonly {{nodeClass.Name}} Missing = new({{
+                    _ => VisitAll(nodeClass.Properties, ", ", generateMissingNodeArguments)}});
+                public override bool IsMissing => ReferenceEquals(this, Missing);
+
                 public new {{contextClassFullName}}? ParserContext
                 {
                     get => ({{contextClassFullName}}?)base.ParserContext;
@@ -114,6 +144,27 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
                     => {{_ => generateChildNodesCollectionExpression()}};
             }
             """);
+
+        void generateMissingNodeArguments(PropertyModel property)
+        {
+            Output.WriteCodeInline($"{property.Name}: ");
+            switch (property)
+            {
+                case TokenTextPropertyModel { Optional: true }:
+                case NodeReferencePropertyModel { Optional: true }:
+                    Output.Write("null"); break;
+                case OptionalTokenPropertyModel:
+                    Output.Write("false"); break;
+                case NodeReferenceListPropertyModel or TokenTextListPropertyModel:
+                    Output.Write("[]"); break;
+                case TokenTextPropertyModel:
+                    Output.WriteCodeInline($"\"<missing {nodeClass.Name}>\""); break;
+                case NodeReferencePropertyModel { NodeClass.Value.Name: string nodeClass }:
+                    Output.WriteCodeInline($"{nodeClass}.Missing"); break;
+                default:
+                    Output.Write("default"); break;
+            }
+        }
 
         void generateChildNodesCollectionExpression()
         {
@@ -140,6 +191,8 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
         Output.WriteCode($$"""
             public class AstBuilder : {{astBuilderModel.AntlrGrammarName}}BaseVisitor<AstNode>
             {
+                public string MissingTokenPlaceholderText { get; init; } = "\u2370"; // question mark in a box
+
                 {{_ => VisitAll(astBuilderModel.AstMapping, "\n", visit)}}
             }
             """);
@@ -153,15 +206,21 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
             if (astClass.IsAbstract)
             {
                 Output.WriteCode($$"""
-                    public virtual {{astClass.Name}} Visit{{contextName}}({{contextClassName}} context)
-                        => ({{astClass.Name}})Visit(context);
+                    public virtual {{astClass.Name}} Visit{{contextName}}({{contextClassName}}? context)
+                    {
+                        if (context is null) return {{astClass.Name}}.Missing;
+                    
+                        return ({{astClass.Name}})Visit(context);
+                    }
                     """);
             }
             else
             {
                 Output.WriteCode($$"""
-                    public override {{astClass.Name}} Visit{{contextName}}({{contextClassName}} context)
+                    public override {{astClass.Name}} Visit{{contextName}}({{contextClassName}}? context)
                     {
+                        if (context is null) return {{astClass.Name}}.Missing;
+
                         {{_ => VisitAll(astClass.Properties, "\n", p =>
                             $"var {p.Name} = {GetCodeForExtractingValueFromParseTree(p)};")}}
                         return new {{astClass.Name}}({{
@@ -188,7 +247,8 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
 
         return property switch {
             TokenTextPropertyModel(_, var source, var token, var opt) =>
-                $"context.{tokenAccessor(source, token)}{(opt ? "?" : "")}.{tokenTextAccessor(source)}",
+                $"context.{tokenAccessor(source, token)}?.{tokenTextAccessor(source)}{
+                    (opt ? "" : " ?? MissingTokenPlaceholderText")}",
             TokenTextListPropertyModel(_, var source, var token) =>
                 $"context.{tokenAccessor(source, token)}.Select(t => t.{tokenTextAccessor(source)}).ToList()",
             OptionalTokenPropertyModel(_, var source, var token) =>

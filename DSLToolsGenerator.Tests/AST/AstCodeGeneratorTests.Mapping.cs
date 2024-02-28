@@ -13,12 +13,18 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
         """;
 
     readonly string visitMethodForSimpleIdExpression = """
-        public override Expression VisitExpr(FooParser.ExprContext context)
+        public override Expression VisitExpr(FooParser.ExprContext? context)
         {
-            var Identifier = context.ID().GetText();
+            if (context is null) return Expression.Missing;
+
+            var Identifier = context.ID()?.GetText() ?? MissingTokenPlaceholderText;
             return new Expression(Identifier) { ParserContext = context };
         }
     """.TrimStart();
+
+    const string expectedAstBuilderProlog = """
+        public string MissingTokenPlaceholderText { get; init; } = "\u2370"; // question mark in a box
+        """;
 
     [Fact]
     public void given_1_rule_with_two_ID_token_refs_ー_gets_mapped_from_Text_of_indexed_tokens()
@@ -27,13 +33,17 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             {{grammarProlog}}
             stat : 'swap' ID 'and' ID ;
             """);
-        Assert.Equal("""
+        Assert.Equal($$"""
             public class AstBuilder : FooBaseVisitor<AstNode>
             {
-                public override Statement VisitStat(FooParser.StatContext context)
+                {{expectedAstBuilderProlog}}
+
+                public override Statement VisitStat(FooParser.StatContext? context)
                 {
-                    var LeftIdentifier = context.ID(0).GetText();
-                    var RightIdentifier = context.ID(1).GetText();
+                    if (context is null) return Statement.Missing;
+
+                    var LeftIdentifier = context.ID(0)?.GetText() ?? MissingTokenPlaceholderText;
+                    var RightIdentifier = context.ID(1)?.GetText() ?? MissingTokenPlaceholderText;
                     return new Statement(LeftIdentifier, RightIdentifier) { ParserContext = context };
                 }
             }
@@ -48,11 +58,15 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             parser grammar FooParser;
             stat : 'break' ;
             """);
-        Assert.Equal("""
+        Assert.Equal($$"""
             public class AstBuilder : FooParserBaseVisitor<AstNode>
             {
-                public override Statement VisitStat(FooParser.StatContext context)
+                {{expectedAstBuilderProlog}}
+            
+                public override Statement VisitStat(FooParser.StatContext? context)
                 {
+                    if (context is null) return Statement.Missing;
+
                     return new Statement() { ParserContext = context };
                 }
             }
@@ -67,13 +81,17 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             {{grammarProlog}}
             stat : 'import' ID 'from' ID ('as' ID '.' ID)? ;
             """);
-        Assert.Equal("""
+        Assert.Equal($$"""
             public class AstBuilder : FooBaseVisitor<AstNode>
             {
-                public override Statement VisitStat(FooParser.StatContext context)
+                {{expectedAstBuilderProlog}}
+
+                public override Statement VisitStat(FooParser.StatContext? context)
                 {
-                    var Identifier1 = context.ID(0).GetText();
-                    var Identifier2 = context.ID(1).GetText();
+                    if (context is null) return Statement.Missing;
+
+                    var Identifier1 = context.ID(0)?.GetText() ?? MissingTokenPlaceholderText;
+                    var Identifier2 = context.ID(1)?.GetText() ?? MissingTokenPlaceholderText;
                     var Identifier3 = context.ID(2)?.GetText();
                     var Identifier4 = context.ID(3)?.GetText();
                     return new Statement(Identifier1, Identifier2, Identifier3, Identifier4) { ParserContext = context };
@@ -90,11 +108,15 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             {{grammarProlog}}
             stat : 'import' (ID '.')? ID ('from' (ID | ID '.' ID) | 'as' ID)? ;
             """);
-        Assert.Equal("""
+        Assert.Equal($$"""
             public class AstBuilder : FooBaseVisitor<AstNode>
             {
-                public override Statement VisitStat(FooParser.StatContext context)
+                {{expectedAstBuilderProlog}}
+
+                public override Statement VisitStat(FooParser.StatContext? context)
                 {
+                    if (context is null) return Statement.Missing;
+
                     var Identifiers = context.ID().Select(t => t.GetText()).ToList();
                     return new Statement(Identifiers) { ParserContext = context };
                 }
@@ -110,11 +132,15 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             {{grammarProlog}}
             print : 'print' ID+ ;
             """);
-        Assert.Equal("""
+        Assert.Equal($$"""
             public class AstBuilder : FooBaseVisitor<AstNode>
             {
-                public override Print VisitPrint(FooParser.PrintContext context)
+                {{expectedAstBuilderProlog}}
+
+                public override Print VisitPrint(FooParser.PrintContext? context)
                 {
+                    if (context is null) return Print.Missing;
+
                     var Identifiers = context.ID().Select(t => t.GetText()).ToList();
                     return new Print(Identifiers) { ParserContext = context };
                 }
@@ -130,13 +156,17 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             {{grammarProlog}}
             stat : 'set' varName=ID '=' expr=ID ;
             """);
-        Assert.Equal("""
+        Assert.Equal($$"""
             public class AstBuilder : FooBaseVisitor<AstNode>
             {
-                public override Statement VisitStat(FooParser.StatContext context)
+                {{expectedAstBuilderProlog}}
+
+                public override Statement VisitStat(FooParser.StatContext? context)
                 {
-                    var VariableName = context.varName.Text;
-                    var Expression = context.expr.Text;
+                    if (context is null) return Statement.Missing;
+
+                    var VariableName = context.varName?.Text ?? MissingTokenPlaceholderText;
+                    var Expression = context.expr?.Text ?? MissingTokenPlaceholderText;
                     return new Statement(VariableName, Expression) { ParserContext = context };
                 }
             }
@@ -151,11 +181,15 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
             {{grammarProlog}}
             stat : 'var' varName=ID? ('=' expr=ID)? ;
             """);
-        Assert.Equal("""
+        Assert.Equal($$"""
             public class AstBuilder : FooBaseVisitor<AstNode>
             {
-                public override Statement VisitStat(FooParser.StatContext context)
+                {{expectedAstBuilderProlog}}
+
+                public override Statement VisitStat(FooParser.StatContext? context)
                 {
+                    if (context is null) return Statement.Missing;
+
                     var VariableName = context.varName?.Text;
                     var Expression = context.expr?.Text;
                     return new Statement(VariableName, Expression) { ParserContext = context };
@@ -177,17 +211,23 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
         Assert.Equal($$"""
             public class AstBuilder : FooBaseVisitor<AstNode>
             {
-                public override Assignment VisitAssignment(FooParser.AssignmentContext context)
+                {{expectedAstBuilderProlog}}
+
+                public override Assignment VisitAssignment(FooParser.AssignmentContext? context)
                 {
+                    if (context is null) return Assignment.Missing;
+
                     var Lvalue = VisitLvalue(context.lvalue());
                     var Expression = VisitExpr(context.expr());
                     return new Assignment(Lvalue, Expression) { ParserContext = context };
                 }
 
-                public override Lvalue VisitLvalue(FooParser.LvalueContext context)
+                public override Lvalue VisitLvalue(FooParser.LvalueContext? context)
                 {
+                    if (context is null) return Lvalue.Missing;
+
                     var Expression = VisitExpr(context.expr());
-                    var Identifier = context.ID().GetText();
+                    var Identifier = context.ID()?.GetText() ?? MissingTokenPlaceholderText;
                     return new Lvalue(Expression, Identifier) { ParserContext = context };
                 }
 
@@ -209,17 +249,23 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
         Assert.Equal($$"""
             public class AstBuilder : FooBaseVisitor<AstNode>
             {
-                public override Assignment VisitAssignment(FooParser.AssignmentContext context)
+                {{expectedAstBuilderProlog}}
+
+                public override Assignment VisitAssignment(FooParser.AssignmentContext? context)
                 {
+                    if (context is null) return Assignment.Missing;
+
                     var Lvalue = VisitLvalue(context.lvalue());
                     var Expression = context.expr()?.Accept(VisitExpr);
                     return new Assignment(Lvalue, Expression) { ParserContext = context };
                 }
 
-                public override Lvalue VisitLvalue(FooParser.LvalueContext context)
+                public override Lvalue VisitLvalue(FooParser.LvalueContext? context)
                 {
+                    if (context is null) return Lvalue.Missing;
+
                     var Expression = context.expr()?.Accept(VisitExpr);
-                    var Identifier = context.ID().GetText();
+                    var Identifier = context.ID()?.GetText() ?? MissingTokenPlaceholderText;
                     return new Lvalue(Expression, Identifier) { ParserContext = context };
                 }
             
@@ -240,8 +286,12 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
         Assert.Equal($$"""
             public class AstBuilder : FooBaseVisitor<AstNode>
             {
-                public override IfExpression VisitIfExpr(FooParser.IfExprContext context)
+                {{expectedAstBuilderProlog}}
+
+                public override IfExpression VisitIfExpr(FooParser.IfExprContext? context)
                 {
+                    if (context is null) return IfExpression.Missing;
+
                     var Expression1 = VisitExpr(context.expr(0));
                     var Expression2 = VisitExpr(context.expr(1));
                     var Expression3 = context.expr(2)?.Accept(VisitExpr);
@@ -267,8 +317,12 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
         Assert.Equal($$"""
             public class AstBuilder : FooBaseVisitor<AstNode>
             {
-                public override MagicExpression VisitMagicExpr(FooParser.MagicExprContext context)
+                {{expectedAstBuilderProlog}}
+
+                public override MagicExpression VisitMagicExpr(FooParser.MagicExprContext? context)
                 {
+                    if (context is null) return MagicExpression.Missing;
+
                     var Names = context._names.Select(t => t.Text).ToList();
                     var Values = context._values.Select(VisitExpr).ToList();
                     var Sources = context._sources.Select(t => t.Text).ToList();
@@ -294,8 +348,12 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
         Assert.Equal($$"""
             public class AstBuilder : FooBaseVisitor<AstNode>
             {
-                public override IfExpression VisitIfExpr(FooParser.IfExprContext context)
+                {{expectedAstBuilderProlog}}
+
+                public override IfExpression VisitIfExpr(FooParser.IfExprContext? context)
                 {
+                    if (context is null) return IfExpression.Missing;
+
                     var Conditions = context._conds.Select(VisitExpr).ToList();
                     var Then = context._then.Select(VisitExpr).ToList();
                     var ElseExpression = context.elseExpr?.Accept(VisitExpr);
@@ -319,8 +377,12 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
         Assert.Equal($$"""
             public class AstBuilder : FooBaseVisitor<AstNode>
             {
-                public override IfExpression VisitIfExpr(FooParser.IfExprContext context)
+                {{expectedAstBuilderProlog}}
+
+                public override IfExpression VisitIfExpr(FooParser.IfExprContext? context)
                 {
+                    if (context is null) return IfExpression.Missing;
+
                     var If = VisitExpr(context.@if);
                     var Do = VisitExpr(context.@do);
                     var Else = context.@else?.Accept(VisitExpr);
@@ -346,18 +408,28 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
         Assert.Equal($$"""
             public class AstBuilder : FooBaseVisitor<AstNode>
             {
-                public virtual Statement VisitStmt(FooParser.StmtContext context)
-                    => (Statement)Visit(context);
+                {{expectedAstBuilderProlog}}
 
-                public override AssignmentStatement VisitAssignmentStmt(FooParser.AssignmentStmtContext context)
+                public virtual Statement VisitStmt(FooParser.StmtContext? context)
                 {
-                    var Identifier = context.ID().GetText();
+                    if (context is null) return Statement.Missing;
+
+                    return (Statement)Visit(context);
+                }
+
+                public override AssignmentStatement VisitAssignmentStmt(FooParser.AssignmentStmtContext? context)
+                {
+                    if (context is null) return AssignmentStatement.Missing;
+
+                    var Identifier = context.ID()?.GetText() ?? MissingTokenPlaceholderText;
                     var Expression = VisitExpr(context.expr());
                     return new AssignmentStatement(Identifier, Expression) { ParserContext = context };
                 }
 
-                public override PrintStatement VisitPrintStmt(FooParser.PrintStmtContext context)
+                public override PrintStatement VisitPrintStmt(FooParser.PrintStmtContext? context)
                 {
+                    if (context is null) return PrintStatement.Missing;
+
                     var Expression = VisitExpr(context.expr());
                     return new PrintStatement(Expression) { ParserContext = context };
                 }

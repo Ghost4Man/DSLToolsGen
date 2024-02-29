@@ -305,6 +305,35 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
     }
 
     [Fact]
+    public void given_rule_with_multiple_unlabeled_rule_refs_and_delimited_list_ー_gets_mapped_from_collection_getter()
+    {
+        AstCodeGenerator g = GetGeneratorForGrammar($$"""
+            {{grammarProlog}}
+            arrayAssign : arr=expr '[' (expr (',' expr)*)? ']' '=' val=expr ;
+            expr : ID ;
+            """);
+        Assert.Equal($$"""
+            public class AstBuilder : FooBaseVisitor<AstNode>
+            {
+                {{expectedAstBuilderProlog}}
+
+                public override ArrayAssign VisitArrayAssign(FooParser.ArrayAssignContext? context)
+                {
+                    if (context is null) return ArrayAssign.Missing;
+
+                    var Array = VisitExpr(context.arr);
+                    var Expressions = context.expr().Select(VisitExpr).ToList();
+                    var Value = VisitExpr(context.val);
+                    return new ArrayAssign(Array, Expressions, Value) { ParserContext = context };
+                }
+            
+                {{visitMethodForSimpleIdExpression}}
+            }
+            """,
+            ModelToString(g.GenerateAstCodeModel().AstBuilder).TrimEnd());
+    }
+
+    [Fact]
     public void given_1_rule_with_multiple_list_labels_ー_gets_mapped_from_list_fields()
     {
         AstCodeGenerator g = GetGeneratorForGrammar($$"""

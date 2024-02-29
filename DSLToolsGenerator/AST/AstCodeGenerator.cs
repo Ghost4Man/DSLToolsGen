@@ -139,6 +139,7 @@ public partial class AstCodeGenerator
             "cond" => "condition",
             "cmd" => "command",
             "seq" => "sequence",
+            "arr" => "array",
             "elt" or "elem" => "element",
             "op" => "operator",
             "mul" or "mult" => "multiply",
@@ -209,11 +210,10 @@ public partial class AstCodeGenerator
             {
                 Lazy<NodeClassModel> nodeClass = new(() => FindOrGenerateAstNodeClass(rule));
                 string propertyName = makePropertyName(element, rule.Name, list: isRepeated);
+                var mappingSource = createMappingSource(element, list: isRepeated);
                 return [isRepeated
-                    ? new NodeReferenceListPropertyModel(propertyName,
-                        createMappingSource(element), nodeClass)
-                    : new NodeReferencePropertyModel(propertyName,
-                        createMappingSource(element), nodeClass, isOptional)];
+                    ? new NodeReferenceListPropertyModel(propertyName, mappingSource, nodeClass)
+                    : new NodeReferencePropertyModel(propertyName, mappingSource, nodeClass, isOptional)];
             }
             else
             {
@@ -226,17 +226,18 @@ public partial class AstCodeGenerator
         {
             ResolvedTokenRef resolvedTokenRef = Resolve(tokenRef);
             string propertyName = makePropertyName(element, tokenRef.Name, list: isRepeated);
+            var mappingSource = createMappingSource(element, list: isRepeated);
             return [isRepeated
-                ? new TokenTextListPropertyModel(propertyName,
-                    createMappingSource(element), resolvedTokenRef)
-                : new TokenTextPropertyModel(propertyName,
-                    createMappingSource(element), resolvedTokenRef, isOptional)];
+                ? new TokenTextListPropertyModel(propertyName, mappingSource, resolvedTokenRef)
+                : new TokenTextPropertyModel(propertyName, mappingSource, resolvedTokenRef, isOptional)];
         }
         else if (element is TokenRef or Literal
             && element.IsOptional()
             && element.Label is not null) // e.g. `classDecl : isAbstract='abstract'? ID ;`
         {
-            string propertyName = makePropertyName(element, null!, list: false);
+            string propertyName = makePropertyName(element,
+                refName: null!, // we can do this because we are sure that element.Label is not null
+                list: false); // the label is probably already plural(ized) if needed
             ResolvedTokenRef resolvedToken = element switch {
                 Literal literal => Resolve(literal),
                 TokenRef tokenRef_ => Resolve(tokenRef_),
@@ -246,7 +247,7 @@ public partial class AstCodeGenerator
                 Name: propertyName.StartsWithAny("Is", "Has", "Does", "Do", "Should", "Can", "Will")
                         ? propertyName
                         : $"Is{propertyName}",
-                Source: createMappingSource(element),
+                Source: createMappingSource(element, list: isRepeated),
                 Token: resolvedToken
             )];
         }
@@ -279,17 +280,18 @@ public partial class AstCodeGenerator
                 return propName;
         }
 
-        ValueMappingSource createMappingSource(SyntaxElement element)
+        ValueMappingSource createMappingSource(SyntaxElement element, bool list)
         {
             return element.Label is not null
                 ? new ValueMappingSource.FromLabel(element.Label, element.LabelKind)
-                : new ValueMappingSource.FromGetter(
-                    nullIfSingleton(element.GetElementIndex()));
+                : new ValueMappingSource.FromGetter(getElementMappingIndex());
 
             // e.g. emit code like `context.expr()` instead of `context.expr(0)`
             // if the element is the only reference to the `expr` rule in `context`
-            int? nullIfSingleton(ElementIndexInfo index)
-                => element.IsOnlyOfType() ? null : index.IndexByType;
+            // or is part of a delimited list like `expr (',' expr)+`
+            int? getElementMappingIndex() => (list || element.IsOnlyOfType())
+                ? null
+                : element.GetElementIndex().IndexByType;
         }
     }
 

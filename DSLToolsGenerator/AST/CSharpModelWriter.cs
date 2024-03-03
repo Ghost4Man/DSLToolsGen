@@ -252,7 +252,7 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
             TokenTextListPropertyModel(_, var source, var token) =>
                 $"context.{tokenAccessor(source, token)}.Select(t => t.{tokenTextAccessor(source)}).ToList()",
             OptionalTokenPropertyModel(_, var source, var token) =>
-                $"context.{tokenAccessor(source, token)} != null",
+                $"context.{tokenAccessor(source, token)} is not {emptyValue(source)}",
             NodeReferencePropertyModel(_, var source, { Value: var nodeClass }, var opt) =>
                 opt ? $"context.{ruleContextAccessor(source, nodeClass)}?.Accept(Visit{nodeClass.SourceContextName})"
                     : $"Visit{nodeClass.SourceContextName}(context.{ruleContextAccessor(source, nodeClass)})",
@@ -264,6 +264,9 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
             => accessor(source, token.Name);
         string ruleContextAccessor(ValueMappingSource source, NodeClassModel nodeClass)
             => accessor(source, nodeClass.ParserRule.Name);
+
+        string emptyValue(ValueMappingSource source)
+            => source is ValueMappingSource.FromLabel(_, LabelKind.PlusAssign) ? "[]" : "null";
 
         string accessor(ValueMappingSource source, string tokenOrRuleName) => source switch {
             ValueMappingSource.FromLabel(string label, LabelKind.Assign) => Identifier(label),

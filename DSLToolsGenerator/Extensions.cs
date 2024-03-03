@@ -13,13 +13,11 @@ static class StringExtensions
     {
         if (string.IsNullOrWhiteSpace(str) || string.IsNullOrWhiteSpace(source))
             return str;
-        bool allUpper = (source.All(c => char.IsUpper(c) || c == '_'));
-        bool allLower = (source.All(c => char.IsLower(c) || c == '_'));
+        bool allUpper = source.All(c => char.IsUpper(c) || c == '_');
         bool capitalized = !allUpper
             && source is [char first, char second, ..]
             && char.IsUpper(first) && !char.IsUpper(second);
         return allUpper ? str.ToUpperInvariant() :
-            allLower ? str.ToLowerInvariant() :
             capitalized ? str.Capitalize() :
             str;
     }
@@ -98,14 +96,5 @@ static class EnumerableExtensions
         var first = enumerator.Current;
         if (enumerator.MoveNext()) return default; // more than one
         return first; // exactly one
-    }
-}
-
-public static class ActionExtensions
-{
-    public static T InvokeAndReturn<T>(this Action action, T value)
-    {
-        action.Invoke();
-        return value;
     }
 }

@@ -294,8 +294,8 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
         return writer.ToString();
     }
 
-    public static string ModelToString(IEnumerable<IModel> models)
-        => ModelToString(models, (v, mm) => v.VisitAll(mm, separator: ""));
+    public static string ModelToString(IEnumerable<IModel> models, AstConfiguration? config = null)
+        => ModelToString(models, (v, mm) => v.VisitAll(mm, separator: ""), config);
 
     public static string ModelToString<TModel>(TModel model,
         Action<CSharpModelWriter, TModel> visitorAction, AstConfiguration? config = null)

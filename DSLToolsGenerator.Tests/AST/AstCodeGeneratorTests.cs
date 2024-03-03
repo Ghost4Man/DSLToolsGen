@@ -107,6 +107,34 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
     }
 
     [Fact]
+    public void given_abbreviation_expansion_config_ー_generates_node_classes_and_properties_with_expanded_names()
+    {
+        AstConfiguration config = new() { AutomaticAbbreviationExpansion = { CustomWordExpansionsRaw = {
+            [new(["comptime", "ct"])] = "compileTime",
+            [new(["stat"])] = "statistic",
+            [new(["exp"])] = "expression",
+            [new(["aggr"])] = "aggressivity",
+            [new(["id"])] = "id",
+            [new(["Δ"])] = "delta",
+        }}};
+        AstCodeGenerator g = GetGeneratorForGrammar($$"""
+            {{grammarProlog}}
+            comptimeIf : '#if' '(' cond=ctExp ')' ;
+            ctExp : ID           #idExp
+                  | txt=STR_LIT  #strLitExp ;
+            stats : 'stats' '{' 'aggresivity' ':' aggr=NUMBER ',' 'delta' ':' Δ=NUMBER '}' ;
+            """, config);
+        Assert.Equal("""
+            public partial record CompileTimeIf(CompileTimeExpression Condition) : AstNode;
+            public abstract partial record CompileTimeExpression : AstNode;
+                public partial record IdExpression(string Id) : CompileTimeExpression;
+                public partial record StringLiteralExpression(string Text) : CompileTimeExpression;
+            public partial record Statistics(string Aggressivity, string Delta) : AstNode;
+            """,
+            ModelToString(g.GenerateAstCodeModel().NodeClasses, config).TrimEnd());
+    }
+
+    [Fact]
     public void given_1_rule_with_labeled_ID_tokens_ー_generates_record_with_2_string_properties()
     {
         AstCodeGenerator g = GetGeneratorForGrammar($$"""

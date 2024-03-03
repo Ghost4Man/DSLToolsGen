@@ -106,50 +106,11 @@ public partial class AstCodeGenerator
 
     string? ExpandAbbreviation(string word)
     {
+        var exp = config.AutomaticAbbreviationExpansion;
         string? expanded = word.ToLowerInvariant() switch {
-            "prog" => "program",
-            "stmt" or "stat" => "statement",
-            "brk" => "break",
-            "ret" => "return",
-            "expr" => "expression",
-            "param" => "parameter",
-            "arg" => "argument",
-            "fn" or "fun" or "func" => "function",
-            "proc" => "procedure",
-            "ns" => "namespace",
-            "def" => "definition",
-            "decl" => "declaration",
-            "attr" => "attribute",
-            "prop" => "property",
-            "ctor" => "constructor",
-            "dtor" => "destructor",
-            "ref" => "reference",
-            "ptr" => "pointer",
-            "var" => "variable",
-            "val" => "value",
-            "const" => "constant",
-            "lit" => "literal",
-            "str" => "string",
-            "int" => "integer",
-            "num" => "number",
-            "chr" or "char" => "character",
-            "id" or "ident" => "identifier",
-            "kw" => "keyword",
-            "asgt" or "asmt" or "asnmt" or "asgmt" or "asst" or "assig" or "asgn" => "assignment",
-            "cond" => "condition",
-            "cmd" => "command",
-            "seq" => "sequence",
-            "arr" => "array",
-            "elt" or "elem" => "element",
-            "op" => "operator",
-            "mul" or "mult" => "multiply",
-            "div" => "divide",
-            "sub" => "subtract",
-            "pow" or "pwr" => "power",
-            "bin" => "binary",
-            "un" => "unary",
-            "esc" => "escape",
-            [..([.., not 's'] singular), 's'] => ExpandAbbreviation(singular)?.Pluralize(),
+            string abbreviated when exp.CustomWordExpansions.GetValueOrDefault(abbreviated) is string s => s,
+            string abbreviated when exp.DefaultWordExpansions.GetValueOrDefault(abbreviated) is string s => s,
+            [.. ([.., not 's'] singular), 's'] => ExpandAbbreviation(singular)?.Pluralize(),
             _ => null
         };
         return expanded?.PreserveCase(word);
@@ -159,7 +120,7 @@ public partial class AstCodeGenerator
         => ToPascalCase(ExpandAllAbbreviations(parserRule.Name));
 
     string ExpandAllAbbreviations(string name)
-        => WordSplitterRegex().Replace(name, m => ExpandAbbreviation(m.Value) ?? m.Value);
+        => WordFinderRegex().Replace(name, m => ExpandAbbreviation(m.Value) ?? m.Value);
 
     IEnumerable<PropertyModel> GeneratePropertiesForAll(IReadOnlyList<SyntaxElement> elements,
         bool parentIsOptional, bool parentIsRepeated)
@@ -383,6 +344,6 @@ public partial class AstCodeGenerator
             or "REF" or "TYPE" or "KIND" or "MODIFIER" or "ATTR" or "ATTRIBUTE"
             or "INT" or "FLOAT" or "NUMBER";
 
-    [GeneratedRegex(@"([A-Z]+(?![a-z])|[A-Z][a-z]+|[0-9]+|[a-z]+)")]
-    private static partial Regex WordSplitterRegex();
+    [GeneratedRegex(@"([\p{Lu}]+(?![\p{Ll}])|[\p{Lu}][\p{Ll}]+|[0-9]+|[\p{Ll}]+)")]
+    private static partial Regex WordFinderRegex();
 }

@@ -91,6 +91,9 @@ namespace DSLToolsGenerator.SyntaxHighlighting
     {
         public IReadOnlyList<RuleConflict> RuleConflicts { get; init; } = [];
 
+        /// <summary>
+        /// Customize syntax highlighting for specific lexer rules.
+        /// </summary>
         public IReadOnlyDictionary<string, RuleOptions>? RuleSettings { get; init; }
     }
 

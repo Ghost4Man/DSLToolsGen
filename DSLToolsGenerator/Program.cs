@@ -4,6 +4,8 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using NJsonSchema;
+using NJsonSchema.Generation;
 using Humanizer;
 using Antlr4Ast;
 
@@ -41,10 +43,16 @@ generateTextMateGrammarCommand.SetHandler((gf, of, w, v) =>
     WithWatchMode(w, gf, () => GenerateTextMateGrammar(gf, of, v)),
     grammarArg, outputArg, watchOption, syntaxHighlightingVerboseOption);
 
+var generateConfigSchemaCommand = new Command("dtgConfigSchema",
+    "generates a JSON schema of DTG configuration")
+    { outputArg };
+generateConfigSchemaCommand.SetHandler(GenerateConfigSchema, outputArg);
+
 var generateCommand = new Command("generate",
     "generates a (part of a) tool for the language described by an ANTLR4 grammar") {
         generateAstCommand,
-        generateTextMateGrammarCommand
+        generateTextMateGrammarCommand,
+        generateConfigSchemaCommand,
     };
 var rootCommand = new RootCommand("DSL Tools Generator") { generateCommand };
 return await rootCommand.InvokeAsync(args);
@@ -76,7 +84,7 @@ Task<int> GenerateAstCodeFromGrammarFile(FileInfo grammarFile, FileInfo? outputF
 
     if (outputFile != null)
     {
-        if (!TryOpenWrite(outputFile, out Stream? stream))
+        if (!TryOpenWrite(outputFile, out FileStream? stream))
             return ExitCode(1);
 
         using var sw = new StreamWriter(stream);
@@ -138,7 +146,7 @@ async Task<int> GenerateTextMateGrammar(FileInfo grammarFile, FileInfo? outputFi
     if (!TryParseGrammarAndReportErrors(grammarFile, out Grammar? grammar, GrammarKind.Lexer))
         return 1;
 
-    Stream? fileStream = null;
+    FileStream? fileStream = null;
     if (outputFile != null && !TryOpenWrite(outputFile, out fileStream))
         return 1;
 
@@ -150,7 +158,7 @@ async Task<int> GenerateTextMateGrammar(FileInfo grammarFile, FileInfo? outputFi
     return 0;
 }
 
-bool TryOpenWrite(FileInfo file, [NotNullWhen(true)] out Stream? stream)
+bool TryOpenWrite(FileInfo file, [NotNullWhen(true)] out FileStream? stream)
 {
     try
     {
@@ -164,6 +172,10 @@ bool TryOpenWrite(FileInfo file, [NotNullWhen(true)] out Stream? stream)
         return false;
     }
 }
+
+StreamWriter CreateOutputWriter(Stream? stream) => stream is null
+    ? new StreamWriter(Console.OpenStandardOutput(), leaveOpen: true)
+    : new StreamWriter(stream);
 
 Func<Stream, Task> ConvertGrammarToTextMateLanguage(Grammar grammar, bool verbose)
 {
@@ -223,6 +235,25 @@ async Task<TResult> WithWatchMode<TResult>(bool watchModeEnabled, FileInfo watch
     }
     while (true);
     return result;
+}
+
+async Task<int> GenerateConfigSchema(FileInfo? outputFile)
+{
+    var settings = new SystemTextJsonSchemaGeneratorSettings();
+    var generator = new JsonSchemaGenerator(settings);
+    var schema = generator.Generate(typeof(Configuration));
+    schema.Properties.Add("$schema", new() { Type = JsonObjectType.String });
+    schema.ExtensionData ??= new Dictionary<string, object?>();
+    schema.ExtensionData["allowTrailingCommas"] = true;
+    schema.ExtensionData["allowComments"] = true;
+
+    FileStream? fileStream = null;
+    if (outputFile != null && !TryOpenWrite(outputFile, out fileStream))
+        return 1;
+
+    await using var writer = CreateOutputWriter(fileStream);
+    writer.WriteLine(schema.ToJson());
+    return 0;
 }
 
 Task<int> ExitCode(int code) => Task.FromResult(code);

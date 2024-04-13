@@ -239,7 +239,11 @@ async Task<TResult> WithWatchMode<TResult>(bool watchModeEnabled, FileInfo watch
 
 async Task<int> GenerateConfigSchema(FileInfo? outputFile)
 {
-    var settings = new SystemTextJsonSchemaGeneratorSettings();
+    var settings = new SystemTextJsonSchemaGeneratorSettings {
+        SchemaProcessors = {
+            new MarkdownDescriptionSchemaProcessor(),
+        }
+    };
     var generator = new JsonSchemaGenerator(settings);
     var schema = generator.Generate(typeof(Configuration));
     schema.Properties.Add("$schema", new() { Type = JsonObjectType.String });

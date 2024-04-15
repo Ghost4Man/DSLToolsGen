@@ -2,6 +2,7 @@
 dotnet_style_operator_placement_when_wrapping = beginning_of_line
 tab_width = 4
 indent_size = 4
+indent_style = space
 end_of_line = lf
 insert_final_newline = true
 dotnet_style_coalesce_expression = true:suggestion

@@ -1,4 +1,8 @@
-﻿namespace DSLToolsGenerator;
+﻿using System.Reactive.Linq;
+
+using Microsoft.Extensions.FileProviders;
+
+namespace DSLToolsGenerator;
 
 static class StringExtensions
 {
@@ -59,6 +63,14 @@ static class SpanExtensions
     }
 }
 
+static class FileInfoExtensions
+{
+    public static string? GetDirectoryName(this IFileInfo fileInfo)
+    {
+        return Path.GetDirectoryName(fileInfo.PhysicalPath);
+    }
+}
+
 static class EnumerableExtensions
 {
     public static IEnumerable<T> WhereNotNull<T>(this IEnumerable<T?> items)
@@ -96,5 +108,40 @@ static class EnumerableExtensions
         var first = enumerator.Current;
         if (enumerator.MoveNext()) return default; // more than one
         return first; // exactly one
+    }
+}
+
+public static class ObservableExtensions
+{
+    public static IObservable<T> WhereNotNull<T>(this IObservable<T?> items)
+    {
+        return from item in items
+               where item is not null
+               select item;
+    }
+
+    /// <summary>
+    /// Projects each element using the provided selector function,
+    /// unless it's <see langword="null"/>, which is projected
+    /// to the value specified in <paramref name="orIfNull"/>.
+    /// </summary>
+    /// <param name="orIfNull">Specifies what value should
+    ///     a <see langword="null"/> element be projected to.</param>
+    public static IObservable<TResult> Select<TSource, TResult>(
+        this IObservable<TSource?> items, Func<TSource, TResult> selector, TResult orIfNull)
+    {
+        return items.Select(it => it is not null ? selector(it) : orIfNull);
+    }
+
+    public static IObservable<T> Log<T>(this IObservable<T> observable, string label)
+    {
+        const string GRAY = "\u001b[90m";
+        const string DEFAULT = "\u001b[39m";
+
+        return observable.Do(
+            onNext: x => Console.Error.WriteLine(
+                $"{GRAY}{label} was {(x is null ? "updated to null" : "modified")}.{DEFAULT}"),
+            onError: e => Console.Error.WriteLine(
+                $"{label} - IObservable error: {e.GetType().Name}: {e.Message}"));
     }
 }

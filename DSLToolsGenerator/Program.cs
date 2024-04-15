@@ -1,9 +1,12 @@
 using System.CommandLine;
+using System.CommandLine.Parsing;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using Microsoft.Extensions.FileProviders.Physical;
+using Microsoft.Extensions.FileProviders;
 using NJsonSchema;
 using NJsonSchema.Generation;
 using Humanizer;
@@ -17,31 +20,33 @@ using DSLToolsGenerator.SyntaxHighlighting;
 
 const string DefaultConfigFileName = "dtg.json";
 
-var grammarArg = new Argument<FileInfo>("grammar-file",
-    "input ANTLR4 grammar file path (.g4)");
+//var grammarArg = new Argument<FileInfo>("grammar-file",
+//    "input ANTLR4 grammar file path (.g4)");
 
 var outputArg = new Option<FileInfo?>(["-o", "--output"],
-    "name of the file to write the generated code to");
+    "path of the file to write the generated code to");
 
 var watchOption = new Option<bool>("--watch",
-    "watch the input grammar for changes and regenerate when changed");
+    "watch the inputs for changes and regenerate when changed");
 
-var syntaxHighlightingVerboseOption = new Option<bool>("--verbose",
-    "print more details about how each rule was translated into a TM pattern/regex");
+//var syntaxHighlightingVerboseOption = new Option<bool>("--verbose",
+//    "print more details about how each rule was translated into a TM pattern/regex");
 
 var generateAstCommand = new Command("ast",
     "generates C# code of a syntax tree data structure")
-    { grammarArg, outputArg, watchOption };
-generateAstCommand.SetHandler((gf, of, w) =>
-    WithWatchMode(w, gf, () => GenerateAstCodeFromGrammarFile(gf, of)),
-    grammarArg, outputArg, watchOption);
+    { watchOption };
+generateAstCommand.SetHandler(w =>
+    InitializePipeline(watchForChanges: w)
+        .RunGenerators(new OutputSet { AST = true }),
+    watchOption);
 
 var generateTextMateGrammarCommand = new Command("tmLanguage",
     "generates a TextMate grammar for syntax highlighting")
-    { grammarArg, outputArg, watchOption, syntaxHighlightingVerboseOption };
-generateTextMateGrammarCommand.SetHandler((gf, of, w, v) =>
-    WithWatchMode(w, gf, () => GenerateTextMateGrammar(gf, of, v)),
-    grammarArg, outputArg, watchOption, syntaxHighlightingVerboseOption);
+    { watchOption };
+generateTextMateGrammarCommand.SetHandler(w =>
+    InitializePipeline(watchForChanges: w)
+        .RunGenerators(new OutputSet { TmLanguageJson = true }),
+    watchOption);
 
 var generateConfigSchemaCommand = new Command("dtgConfigSchema",
     "generates a JSON schema of DTG configuration")
@@ -49,64 +54,79 @@ var generateConfigSchemaCommand = new Command("dtgConfigSchema",
 generateConfigSchemaCommand.SetHandler(GenerateConfigSchema, outputArg);
 
 var generateCommand = new Command("generate",
-    "generates a (part of a) tool for the language described by an ANTLR4 grammar") {
+    "runs all configured generators") {
         generateAstCommand,
         generateTextMateGrammarCommand,
         generateConfigSchemaCommand,
     };
-var rootCommand = new RootCommand("DSL Tools Generator") { generateCommand };
+generateCommand.SetHandler(() =>
+    InitializePipeline(watchForChanges: false).RunEnabledGenerators());
+
+var watchCommand = new Command("watch",
+    "runs all configured generators and reruns them when their inputs are modified");
+watchCommand.SetHandler(() =>
+    InitializePipeline(watchForChanges: true).RunEnabledGenerators());
+
+var rootCommand = new RootCommand("DSL Tools Generator") {
+    generateCommand,
+    watchCommand,
+};
+
 return await rootCommand.InvokeAsync(args);
 
-Task<int> GenerateAstCodeFromGrammarFile(FileInfo grammarFile, FileInfo? outputFile)
+GeneratorPipeline InitializePipeline(bool watchForChanges)
 {
-    if (!TryParseGrammarAndReportErrors(grammarFile, out Grammar? grammar, GrammarKind.Parser))
-        return ExitCode(1);
+    return new(InitializePipelineInputs(watchForChanges),
+        new TmLanguageGeneratorRunner(async (g, c) => {
+            if (c.SyntaxHighlighting.OutputPath is string outputPath && outputPath is not "")
+                await GenerateTextMateGrammar(g, c, new FileInfo(outputPath), verbose: false);
+            else
+                Console.Error.WriteLine("Error: Missing configuration value " +
+                    $"{nameof(Configuration.SyntaxHighlighting)}.{nameof(Configuration.SyntaxHighlighting.OutputPath)}");
+        }),
+        new AstCodeGeneratorRunner(async (g, c) => {
+            if (c.Ast.OutputPath is string outputPath && outputPath is not "")
+                await GenerateAstCodeFromGrammarFile(g, c, new FileInfo(outputPath));
+            else
+                Console.Error.WriteLine("Error: Missing configuration value " +
+                    $"{nameof(Configuration.Ast)}.{nameof(Configuration.Ast.OutputPath)}");
+        }));
+}
 
-    var grammarOptions = GetGrammarOptionsAsDictionary(grammar);
-    if (grammarOptions.GetValueOrDefault("tokenVocab") is string tokenVocabValue)
-    {
-        var lexerGrammarFile = new FileInfo(
-            Path.Combine(grammarFile.DirectoryName ?? ".", tokenVocabValue + ".g4"));
-        if (!TryParseGrammarAndReportErrors(lexerGrammarFile, out Grammar? lexerGrammar, GrammarKind.Lexer))
-            return ExitCode(1);
+GeneratorPipelineInputs InitializePipelineInputs(bool watchForChanges)
+    => GeneratorPipelineInputs.FromConfigFile(DefaultConfigFileName, watchForChanges,
+        f => LoadConfiguration(f, warnIfNotFound: true),
+        f => TryParseGrammarAndReportErrors(f, out var grammar) ? grammar : null);
 
-        grammar.MergeFrom(lexerGrammar);
-        grammar.Kind = GrammarKind.Full;
-    }
-
-    Configuration config = LoadConfiguration() ?? new();
-
+async Task<int> GenerateAstCodeFromGrammarFile(
+    Grammar grammar, Configuration config, FileInfo? outputFile)
+{
     var generator = new AstCodeGenerator(grammar,
         diagnosticHandler: Console.Error.WriteLine,
         config.Ast);
 
     var model = generator.GenerateAstCodeModel();
 
-    if (outputFile != null)
-    {
-        if (!TryOpenWrite(outputFile, out FileStream? stream))
-            return ExitCode(1);
+    FileStream? fileStream = null;
+    if (outputFile != null && !TryOpenWrite(outputFile, out fileStream))
+        return 1;
 
-        using var sw = new StreamWriter(stream);
-        var modelWriter = new CSharpModelWriter(sw, config.Ast);
-        modelWriter.Visit(model);
-    }
-    else
-    {
-        var modelWriter = new CSharpModelWriter(Console.Out, config.Ast);
-        modelWriter.Visit(model);
-    }
+    await using var writer = CreateOutputWriter(fileStream);
 
-    return ExitCode(0);
+    var modelWriter = new CSharpModelWriter(writer, config.Ast);
+    modelWriter.Visit(model);
+
+    return 0;
 }
 
-bool TryParseGrammarAndReportErrors(FileInfo grammarFile,
+bool TryParseGrammarAndReportErrors(IFileInfo grammarFile,
     [NotNullWhen(returnValue: true)] out Grammar? grammar,
     GrammarKind? expectedGrammarKind = null)
 {
     try
     {
-        grammar = Grammar.ParseFile(grammarFile.FullName);
+        using StreamReader streamReader = new(grammarFile.CreateReadStream());
+        grammar = Grammar.Parse(streamReader, grammarFile.Name);
         grammar.Analyze();
     }
     catch (IOException ex)
@@ -134,57 +154,35 @@ bool TryParseGrammarAndReportErrors(FileInfo grammarFile,
         return false;
     }
 
+    // Merge associated lexer grammar
+    if (grammar.Options.Find("tokenVocab")?.Value is string tokenVocabValue)
+    {
+        var lexerGrammarFile = new PhysicalFileInfo(new FileInfo(
+            Path.Combine(grammarFile.GetDirectoryName() ?? ".", tokenVocabValue + ".g4")));
+        if (!TryParseGrammarAndReportErrors(lexerGrammarFile, out Grammar? lexerGrammar, GrammarKind.Lexer))
+            return false;
+
+        grammar.MergeFrom(lexerGrammar);
+        grammar.Kind = GrammarKind.Full;
+    }
+
     return true;
 }
 
-Dictionary<string, object?> GetGrammarOptionsAsDictionary(Grammar grammar)
-    => grammar.Options.SelectMany(o => o.Items)
-        .ToDictionary(o => o.Name, o => o.Value);
-
-async Task<int> GenerateTextMateGrammar(FileInfo grammarFile, FileInfo? outputFile, bool verbose)
+async Task<int> GenerateTextMateGrammar(
+    Grammar grammar, Configuration config, FileInfo? outputFile, bool verbose)
 {
-    if (!TryParseGrammarAndReportErrors(grammarFile, out Grammar? grammar, GrammarKind.Lexer))
-        return 1;
-
     FileStream? fileStream = null;
     if (outputFile != null && !TryOpenWrite(outputFile, out fileStream))
         return 1;
 
-    await using (fileStream)
-    {
-        await ConvertGrammarToTextMateLanguage(grammar, verbose)(
-            fileStream ?? Console.OpenStandardOutput());
-    }
-    return 0;
-}
+    await using var _ = fileStream;
+    Stream outputStream = fileStream ?? Console.OpenStandardOutput();
 
-bool TryOpenWrite(FileInfo file, [NotNullWhen(true)] out FileStream? stream)
-{
-    try
-    {
-        stream = file.Create(); // create or replace if it exists
-        return true;
-    }
-    catch (IOException ex)
-    {
-        Console.Error.WriteLine($"Error while opening file '{file.FullName}' for writing ({ex.GetType().Name}): {ex.Message}");
-        stream = null;
-        return false;
-    }
-}
-
-StreamWriter CreateOutputWriter(Stream? stream) => stream is null
-    ? new StreamWriter(Console.OpenStandardOutput(), leaveOpen: true)
-    : new StreamWriter(stream);
-
-Func<Stream, Task> ConvertGrammarToTextMateLanguage(Grammar grammar, bool verbose)
-{
     if (grammar.LexerRules.Count == 0)
     {
         Console.Error.WriteLine("Warning: no lexer rules found");
     }
-
-    Configuration config = LoadConfiguration() ?? new();
 
     var generator = new TmLanguageGenerator(grammar,
         diagnosticHandler: Console.Error.WriteLine,
@@ -215,27 +213,28 @@ Func<Stream, Task> ConvertGrammarToTextMateLanguage(Grammar grammar, bool verbos
         }
     }
 
-    return generator.GenerateTextMateLanguageJsonAsync;
+    await generator.GenerateTextMateLanguageJsonAsync(outputStream);
+    return 0;
 }
 
-async Task<TResult> WithWatchMode<TResult>(bool watchModeEnabled, FileInfo watchedFile, Func<Task<TResult>> action)
+bool TryOpenWrite(FileInfo file, [NotNullWhen(true)] out FileStream? stream)
 {
-    if (!watchModeEnabled)
-        return await action();
-
-    FileSystemWatcher watcher = new(watchedFile.DirectoryName ?? ".", watchedFile.Name);
-    TResult result;
-    do
+    try
     {
-        result = await action();
-        // TODO: this call is actually synchronous
-        if (watcher.WaitForChanged(WatcherChangeTypes.All).ChangeType is not WatcherChangeTypes.Changed)
-            break;
-        await Task.Delay(200);
+        stream = file.Create(); // create or replace if it exists
+        return true;
     }
-    while (true);
-    return result;
+    catch (IOException ex)
+    {
+        Console.Error.WriteLine($"Error while opening file '{file.FullName}' for writing ({ex.GetType().Name}): {ex.Message}");
+        stream = null;
+        return false;
+    }
 }
+
+StreamWriter CreateOutputWriter(Stream? stream) => stream is null
+    ? new StreamWriter(Console.OpenStandardOutput(), leaveOpen: true)
+    : new StreamWriter(stream);
 
 async Task<int> GenerateConfigSchema(FileInfo? outputFile)
 {
@@ -265,7 +264,7 @@ Task<int> ExitCode(int code) => Task.FromResult(code);
 // Gets the path of the directory that contains this program
 string GetExeDirectory() => Path.GetDirectoryName(typeof(Program).Assembly.Location)!;
 
-static Configuration? LoadConfiguration()
+static Configuration? LoadConfiguration(IFileInfo file, bool warnIfNotFound = false)
 {
     JsonSerializerOptions? configDeserializationOptions = new() {
         AllowTrailingCommas = true,
@@ -278,13 +277,17 @@ static Configuration? LoadConfiguration()
     Configuration? config = null;
     try
     {
-        using Stream stream = File.OpenRead(DefaultConfigFileName);
+        using Stream stream = file.CreateReadStream();
         config = JsonSerializer.Deserialize<Configuration>(stream, configDeserializationOptions);
     }
-    catch (FileNotFoundException) { }
+    catch (FileNotFoundException)
+    {
+        if (warnIfNotFound)
+            Console.Error.WriteLine($"Warning: No configuration file ({DefaultConfigFileName}) found.");
+    }
     catch (Exception ex)
     {
-        Console.Error.WriteLine($"error while reading config file: {ex.GetType().Name}: {ex.Message}");
+        Console.Error.WriteLine($"Error while reading config file: {ex.GetType().Name}: {ex.Message}");
     }
 
     return config;

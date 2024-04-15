@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Diagnostics.CodeAnalysis;
+using System.ComponentModel;
+
 using DSLToolsGenerator.AST;
 using DSLToolsGenerator.SyntaxHighlighting;
 
@@ -9,10 +11,31 @@ namespace DSLToolsGenerator
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Skip)]
     public record Configuration
     {
+        /// <summary>
+        /// Path to an ANTLR grammar file (<c>.g4</c>) describing the language.
+        /// This should be the parser grammar (or a combined grammar).
+        /// </summary>
+        public string? GrammarFile { get; init; }
+
+        /// <summary>
+        /// Specifies which generators to run automatically
+        /// on <c>dtg generate</c> or <c>dtg watch</c>.
+        /// </summary>
+        public OutputSet Outputs { get; init; } = new();
+
         [JsonPropertyName("AST")]
         public AstConfiguration Ast { get; init; } = new();
 
         public SyntaxHighlightingConfiguration SyntaxHighlighting { get; init; } = new();
+    }
+
+    public record OutputSet
+    {
+        [DefaultValue(true)]
+        public bool AST { get; init; } = true;
+
+        [DefaultValue(true)]
+        public bool TmLanguageJson { get; init; } = true;
     }
 }
 
@@ -20,6 +43,14 @@ namespace DSLToolsGenerator.AST
 {
     public record AstConfiguration
     {
+        /// <summary>
+        /// Specifies where to store the AST generator output
+        /// (AST classes and related functionality), e.g. <c>./AST.g.cs</c>.
+        /// Using the file extension <c>.g.cs</c> is recommended for generated code.
+        /// </summary>
+        [DefaultValue("AST.g.cs")]
+        public string? OutputPath { get; init; } = "AST.g.cs";
+
         public string? Namespace { get; init; }
 
         public string? AntlrNamespace { get; init; }
@@ -39,6 +70,7 @@ namespace DSLToolsGenerator.AST
 
     public record WordExpansionOptions
     {
+        [DefaultValue(true)]
         public bool UseDefaultWordExpansions { get; init; } = true;
 
         [JsonIgnore]
@@ -89,6 +121,8 @@ namespace DSLToolsGenerator.SyntaxHighlighting
 {
     public record SyntaxHighlightingConfiguration
     {
+        public string? OutputPath { get; init; }
+
         public IReadOnlyList<RuleConflict> RuleConflicts { get; init; } = [];
 
         /// <summary>

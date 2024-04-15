@@ -15,6 +15,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="System.Reactive" Version="6.0.0" />
+    <PackageReference Include="Microsoft.Extensions.FileProviders.Physical" Version="8.0.0" />
     <PackageReference Include="Antlr4Ast" Version="3.0.0" />
     <PackageReference Include="Ghost4Man.VisitorPatternGenerator" Version="0.1.2">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

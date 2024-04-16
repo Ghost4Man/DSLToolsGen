@@ -241,6 +241,7 @@ async Task<int> GenerateConfigSchema(FileInfo? outputFile)
     var settings = new SystemTextJsonSchemaGeneratorSettings {
         SchemaProcessors = {
             new MarkdownDescriptionSchemaProcessor(),
+            new DefaultSnippetsSchemaProcessor(),
         }
     };
     var generator = new JsonSchemaGenerator(settings);

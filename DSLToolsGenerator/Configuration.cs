@@ -131,9 +131,68 @@ namespace DSLToolsGenerator.SyntaxHighlighting
         public IReadOnlyDictionary<string, RuleOptions>? RuleSettings { get; init; }
     }
 
+    [Snippet("rule conflict",
+        """adds a new rule that disambiguates two "conflicting" rules""",
+        """{ "RuleNames": ["${1}", "${2}"] }""")]
     public record RuleConflict(IReadOnlyList<string> RuleNames);
 
-    public record RuleOptions(string TextMateScopeName);
+    public record RuleOptions(
+        [property:
+            Snippet("\"keyword\""),
+            Snippet("\"keyword.operator\""),
+            Snippet("\"keyword.control\""),
+            Snippet("\"keyword.other\""),
+            Snippet("\"keyword.other.operator\""),
+            Snippet("\"keyword.other.unit\""),
+            Snippet("\"support.class\""),
+            Snippet("\"support.type\""),
+            Snippet("\"support.type.property-name\""),
+            Snippet("\"support.variable\""),
+            Snippet("\"support.function\""),
+            Snippet("\"entity\""),
+            Snippet("\"entity.name.function\""),
+            Snippet("\"entity.name.class\""),
+            Snippet("\"entity.name.tag\""),
+            Snippet("\"entity.name.label\""),
+            Snippet("\"entity.name.operator\""),
+            Snippet("\"entity.other.attribute\""),
+            Snippet("\"entity.other.attribute-name\""),
+            Snippet("\"variable\""),
+            Snippet("\"variable.other.constant\""),
+            Snippet("\"variable.other.enummember\""),
+            Snippet("\"variable.language\""),
+            Snippet("\"punctuation\""),
+            Snippet("\"punctuation.definition.tag\""),
+            Snippet("\"punctuation.definition.template-expression\""),
+            Snippet("\"punctuation.section.embedded\""),
+            Snippet("\"string\""),
+            Snippet("\"string.regexp\""),
+            Snippet("\"storage\""),
+            Snippet("\"storage.type\""),
+            Snippet("\"storage.modifier\""),
+            Snippet("\"constant\""),
+            Snippet("\"constant.numeric\""),
+            Snippet("\"constant.character\""),
+            Snippet("\"constant.regexp\""),
+            Snippet("\"constant.language\""),
+            Snippet("\"constant.character.escape\""),
+            Snippet("\"constant.other.placeholder\""),
+            Snippet("\"constant.other.option\""),
+            Snippet("\"markup.heading\""),
+            Snippet("\"markup.italic\""),
+            Snippet("\"markup.underline\""),
+            Snippet("\"markup.bold\""),
+            Snippet("\"meta.template.expression\"", Description =
+                    "ensures that the contents of a string interpolation " +
+                    "expression aren't 'string'-colored"),
+            Snippet("\"strong\""),
+            Snippet("\"emphasis\""),
+            Snippet("\"invalid\""),
+            Snippet("\"comment.line\""),
+            Snippet("\"comment.block\""),
+        ]
+        string TextMateScopeName
+    );
 }
 
 file static class WordExpansionHelper

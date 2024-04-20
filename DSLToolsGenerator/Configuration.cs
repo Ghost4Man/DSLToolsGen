@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Diagnostics.CodeAnalysis;
@@ -5,6 +6,7 @@ using System.ComponentModel;
 
 using DSLToolsGenerator.AST;
 using DSLToolsGenerator.SyntaxHighlighting;
+using DSLToolsGenerator.EditorExtensions;
 
 namespace DSLToolsGenerator
 {
@@ -27,6 +29,8 @@ namespace DSLToolsGenerator
         public AstConfiguration Ast { get; init; } = new();
 
         public SyntaxHighlightingConfiguration SyntaxHighlighting { get; init; } = new();
+
+        public VscodeExtensionConfiguration? VscodeExtension { get; init; }
     }
 
     public record OutputSet
@@ -36,6 +40,49 @@ namespace DSLToolsGenerator
 
         [DefaultValue(true)]
         public bool TmLanguageJson { get; init; } = true;
+
+        [DefaultValue(false)]
+        public bool VscodeExtension { get; init; } = false;
+    }
+
+    [RegexValidatedString]
+    public partial record IdentifierString
+    {
+        public const string ValidationPattern = /* lang=regex */
+            """^([a-zA-Z0-9_]+)$""";
+
+        [GeneratedRegex(ValidationPattern)]
+        public static partial Regex ValidationRegex();
+    }
+
+    [RegexValidatedString]
+    public partial record HyphenIdentifierString
+    {
+        public const string ValidationPattern = /* lang=regex */
+            """^([a-zA-Z0-9_-]+)$""";
+
+        [GeneratedRegex(ValidationPattern)]
+        public static partial Regex ValidationRegex();
+    }
+
+    [RegexValidatedString]
+    public partial record HyphenDotIdentifierString
+    {
+        public const string ValidationPattern = /* lang=regex */
+            """^([a-zA-Z0-9_.-]+)$""";
+
+        [GeneratedRegex(ValidationPattern)]
+        public static partial Regex ValidationRegex();
+    }
+
+    [RegexValidatedString]
+    public partial record HyphenDotSlashIdentifierString
+    {
+        public const string ValidationPattern = /* lang=regex */
+            """^([a-zA-Z0-9_./-]+)$""";
+
+        [GeneratedRegex(ValidationPattern)]
+        public static partial Regex ValidationRegex();
     }
 }
 
@@ -193,6 +240,36 @@ namespace DSLToolsGenerator.SyntaxHighlighting
         ]
         string TextMateScopeName
     );
+}
+
+namespace DSLToolsGenerator.EditorExtensions
+{
+    public record VscodeExtensionConfiguration(
+        HyphenDotIdentifierString ExtensionId, string ExtensionDisplayName,
+        HyphenDotIdentifierString LanguageId, string LanguageDisplayName, string[] LanguageFileExtensions)
+    {
+        [DefaultValue("vscode-extension")]
+        public string OutputDirectory { get; init; } = "vscode-extension";
+
+        public HyphenDotIdentifierString LanguageId { get; init; } = new(LanguageId);
+        public string LanguageDisplayName { get; init; } = LanguageDisplayName;
+
+        /// <summary>
+        /// File extensions for documents in this language, including the dot,
+        /// e.g. <c>[".abc"]</c>.
+        /// </summary>
+        public string[] LanguageFileExtensions { get; init; } = LanguageFileExtensions;
+
+        public HyphenDotIdentifierString ExtensionId { get; init; } = ExtensionId;
+        public string ExtensionDisplayName { get; init; } = ExtensionDisplayName;
+        public HyphenDotSlashIdentifierString LspCustomCommandPrefix { get; init; } = new($"{LanguageId}/");
+        public string LanguageClientName { get; init; } = ExtensionDisplayName;
+        public string CommandCategoryName { get; init; } = ExtensionDisplayName;
+        public required HyphenDotIdentifierString CsprojName { get; init; }
+
+        [DefaultValue(true)]
+        public bool IncludeAstExplorerView { get; init; } = true;
+    }
 }
 
 file static class WordExpansionHelper

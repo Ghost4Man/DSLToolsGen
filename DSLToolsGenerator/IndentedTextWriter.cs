@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 
 namespace DSLToolsGenerator;
 
-public class IndentedTextWriter(TextWriter inner)
+public class IndentedTextWriter(TextWriter inner) : IDisposable
 {
     public int CurrentIndentSize { get; set; }
     public int IndentSpaces { get; set; } = 4;
@@ -86,6 +86,12 @@ public class IndentedTextWriter(TextWriter inner)
     {
         // the text was already written during the construction of the `interpHandler` argument
         _ = interpHandler;
+    }
+
+    public void Dispose()
+    {
+        inner.Dispose();
+        GC.SuppressFinalize(this);
     }
 }
 

@@ -39,3 +39,17 @@ public class AstCodeGeneratorRunner(
         await handler(grammar, config);
     }
 }
+
+public class VscodeExtensionGeneratorRunner(
+    Func<Configuration, Task> handler) : IGeneratorRunner
+{
+    public IObservable<Func<Task>?> ObserveAndRegisterRunner(GeneratorInputs inputs)
+        => inputs.Configuration
+            .Select(c => (Func<Task>)(() => Run(c)), orIfNull: null);
+
+    public async Task Run(Configuration config)
+    {
+        Console.WriteLine("Generating VSCode extension...");
+        await handler(config);
+    }
+}

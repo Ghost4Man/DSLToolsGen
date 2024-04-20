@@ -1,0 +1,68 @@
+﻿{{##
+      This is a Moxy mixin (code-generation template) used
+      internally in DSLToolsGenerator (not for the actual output)
+##}}
+
+#nullable enable
+
+namespace {{ moxy.Class.Namespace }}
+{
+    using ITypeDescriptorContext = System.ComponentModel.ITypeDescriptorContext;
+    using NotNullWhenAttribute = System.Diagnostics.CodeAnalysis.NotNullWhenAttribute;
+    using NotNullIfNotNullAttribute = System.Diagnostics.CodeAnalysis.NotNullIfNotNullAttribute;
+    using CultureInfo = System.Globalization.CultureInfo;
+    using STJ = System.Text.Json;
+
+    [NJsonSchema.Annotations.JsonSchema(NJsonSchema.JsonObjectType.String)]
+    [NJsonSchema.Annotations.JsonSchemaExtensionData("pattern", ValidationPattern)]
+    [System.ComponentModel.TypeConverter(typeof(Converter))]
+    [STJ.Serialization.JsonConverter(typeof(JsonConverter))]
+    partial record {{ moxy.Class.Name }}
+    {
+        public readonly string Value;
+
+        public {{ moxy.Class.Name }}(string value)
+        {
+            if (!ValidationRegex().IsMatch(value))
+                throw new ArgumentException($"`{value}` is not a valid {{ moxy.Class.Name }}");
+
+            Value = value;
+        }
+
+        [return: NotNullIfNotNull(nameof(self))]
+        public static implicit operator string?({{ moxy.Class.Name }}? self) => self?.Value;
+        public static implicit operator ReadOnlySpan<char>({{ moxy.Class.Name }} self) => self.Value;
+
+        public override string ToString() => Value;
+
+        class JsonConverter : STJ.Serialization.JsonConverter<{{ moxy.Class.Name }}>
+        {
+            public override {{ moxy.Class.Name }}? Read(ref STJ.Utf8JsonReader reader,
+                Type typeToConvert, STJ.JsonSerializerOptions options)
+            {
+                return reader.GetString() is string value ? new(value) : null;
+            }
+
+            public override void Write(STJ.Utf8JsonWriter writer,
+                {{ moxy.Class.Name }} value, STJ.JsonSerializerOptions options)
+            {
+                writer.WriteStringValue(value.Value);
+            }
+        }
+
+        class Converter : System.ComponentModel.TypeConverter
+        {
+            public override bool CanConvertFrom(ITypeDescriptorContext? context, Type sourceType)
+                => sourceType == typeof(string);
+
+            public override {{ moxy.Class.Name }}? ConvertFrom(ITypeDescriptorContext? context, CultureInfo? culture, object value)
+                => value is string s ? new(s) : null;
+
+            public override bool CanConvertTo(ITypeDescriptorContext? context, [NotNullWhen(true)] Type? destinationType)
+                => destinationType == typeof(string);
+
+            public override string? ConvertTo(ITypeDescriptorContext? context, CultureInfo? culture, object? value, Type destinationType)
+                => (value as {{ moxy.Class.Name }})?.Value;
+        }
+    }
+}

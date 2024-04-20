@@ -10,7 +10,8 @@ namespace DSLToolsGenerator;
 
 public class GeneratorPipeline(GeneratorPipelineInputs inputs,
     TmLanguageGeneratorRunner? tmLanguageGeneratorRunner,
-    AstCodeGeneratorRunner? astCodeGeneratorRunner)
+    AstCodeGeneratorRunner? astCodeGeneratorRunner,
+    VscodeExtensionGeneratorRunner? vscodeExtensionGeneratorRunner)
 {
     readonly EqualityComparer<IReadOnlyList<IGeneratorRunner>> collectionEqualityComparer =
         EqualityComparer<IReadOnlyList<IGeneratorRunner>>.Create(
@@ -72,7 +73,9 @@ public class GeneratorPipeline(GeneratorPipelineInputs inputs,
 
     IEnumerable<IGeneratorRunner> GetGenerators(OutputSet outputSet)
     {
-        if (astCodeGeneratorRunner is null || tmLanguageGeneratorRunner is null)
+        if (astCodeGeneratorRunner is null
+            || tmLanguageGeneratorRunner is null
+            || vscodeExtensionGeneratorRunner is null)
             throw new InvalidOperationException("Missing Generator Runners!");
 
         return getGenerators();
@@ -83,6 +86,8 @@ public class GeneratorPipeline(GeneratorPipelineInputs inputs,
                 yield return astCodeGeneratorRunner;
             if (outputSet.TmLanguageJson)
                 yield return tmLanguageGeneratorRunner;
+            if (outputSet.VscodeExtension)
+                yield return vscodeExtensionGeneratorRunner;
         }
     }
 }

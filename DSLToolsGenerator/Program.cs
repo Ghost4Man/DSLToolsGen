@@ -15,6 +15,7 @@ using Antlr4Ast;
 using DSLToolsGenerator;
 using DSLToolsGenerator.AST;
 using DSLToolsGenerator.SyntaxHighlighting;
+using DSLToolsGenerator.EditorExtensions;
 
 [assembly: InternalsVisibleTo("DSLToolsGenerator.Tests")]
 
@@ -48,6 +49,14 @@ generateTextMateGrammarCommand.SetHandler(w =>
         .RunGenerators(new OutputSet { TmLanguageJson = true }),
     watchOption);
 
+var generateVscodeExtensionCommand = new Command("vscodeExtension",
+    "generates a VSCode extension")
+    { watchOption };
+generateVscodeExtensionCommand.SetHandler(w =>
+    InitializePipeline(watchForChanges: w)
+        .RunGenerators(new OutputSet { VscodeExtension = true }),
+    watchOption);
+
 var generateConfigSchemaCommand = new Command("dtgConfigSchema",
     "generates a JSON schema of DTG configuration")
     { outputArg };
@@ -57,6 +66,7 @@ var generateCommand = new Command("generate",
     "runs all configured generators") {
         generateAstCommand,
         generateTextMateGrammarCommand,
+        generateVscodeExtensionCommand,
         generateConfigSchemaCommand,
     };
 generateCommand.SetHandler(() =>
@@ -90,6 +100,13 @@ GeneratorPipeline InitializePipeline(bool watchForChanges)
             else
                 Console.Error.WriteLine("Error: Missing configuration value " +
                     $"{nameof(Configuration.Ast)}.{nameof(Configuration.Ast.OutputPath)}");
+        }),
+        new VscodeExtensionGeneratorRunner(async c => {
+            if (c.VscodeExtension?.OutputDirectory is string outputDir && outputDir is not "")
+                await GenerateVscodeExtension(c, new DirectoryInfo(outputDir));
+            else
+                Console.Error.WriteLine("Error: Missing configuration value " +
+                    $"{nameof(Configuration.VscodeExtension)}.{nameof(Configuration.VscodeExtension.OutputDirectory)}");
         }));
 }
 
@@ -217,10 +234,33 @@ async Task<int> GenerateTextMateGrammar(
     return 0;
 }
 
-bool TryOpenWrite(FileInfo file, [NotNullWhen(true)] out FileStream? stream)
+async Task<int> GenerateVscodeExtension(Configuration config, DirectoryInfo outputDirectory)
+{
+    if (config.VscodeExtension is null)
+    {
+        Console.Error.WriteLine($"Error: Missing configuration value for {nameof(config.VscodeExtension)}");
+        return 1;
+    }
+
+    var generator = new VscodeExtensionGenerator(config.VscodeExtension);
+
+    generator.GenerateExtension(file => {
+        FileStream? fileStream = null;
+        if (TryOpenWrite(file, out fileStream))
+            return new IndentedTextWriter(CreateOutputWriter(fileStream));
+        return null;
+    });
+
+    return 0;
+}
+
+bool TryOpenWrite(FileInfo file, [NotNullWhen(true)] out FileStream? stream,
+    bool createDirectory = true)
 {
     try
     {
+        if (createDirectory)
+            file.Directory?.Create();
         stream = file.Create(); // create or replace if it exists
         return true;
     }
@@ -259,11 +299,6 @@ async Task<int> GenerateConfigSchema(FileInfo? outputFile)
     writer.WriteLine(schema.ToJson());
     return 0;
 }
-
-Task<int> ExitCode(int code) => Task.FromResult(code);
-
-// Gets the path of the directory that contains this program
-string GetExeDirectory() => Path.GetDirectoryName(typeof(Program).Assembly.Location)!;
 
 static Configuration? LoadConfiguration(IFileInfo file, bool warnIfNotFound = false)
 {

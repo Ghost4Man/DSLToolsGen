@@ -120,14 +120,16 @@ public partial class TmLanguageGenerator
                 && literalText.All(char.IsLetterOrDigit))
             lowercaseRuleName = literalText;
 
+        string ruleScopeSuffix = lowercaseRuleName.Replace(' ', '_');
+
         var trimmedName = rule.Name.AsSpan().Trim('_');
         return rule.Name switch {
-            _ when RuleIsKeyword(rule) => $"keyword.{lowercaseRuleName}",
-            _ when VariablePattern().IsMatch(trimmedName) => $"variable.{lowercaseRuleName}",
-            _ when NumericLiteralPattern().IsMatch(trimmedName) => $"constant.numeric.{lowercaseRuleName}",
-            _ when LineCommentPattern().IsMatch(trimmedName) => $"comment.line.{lowercaseRuleName}",
-            _ when StringLiteralPattern().IsMatch(trimmedName) => $"string.{lowercaseRuleName}",
-            _ => $"other.{lowercaseRuleName}",
+            _ when RuleIsKeyword(rule) => $"keyword.{ruleScopeSuffix}",
+            _ when VariablePattern().IsMatch(trimmedName) => $"variable.{ruleScopeSuffix}",
+            _ when NumericLiteralPattern().IsMatch(trimmedName) => $"constant.numeric.{ruleScopeSuffix}",
+            _ when LineCommentPattern().IsMatch(trimmedName) => $"comment.line.{ruleScopeSuffix}",
+            _ when StringLiteralPattern().IsMatch(trimmedName) => $"string.{ruleScopeSuffix}",
+            _ => $"other.{ruleScopeSuffix}",
         };
     }
 

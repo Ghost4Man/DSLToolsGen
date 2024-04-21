@@ -88,7 +88,12 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
     [Fact]
     public void given_1_empty_rule_and_namespace_config_ー_generates_prolog_and_using_and_namespace_declaration()
     {
-        AstConfiguration config = new() { Namespace = "Foo.AST", AntlrNamespace = "Foo.Parser" };
+        Configuration config = new() {
+            Ast = new() {
+                Namespace = new("Foo.AST"),
+                AntlrNamespace = new("Foo.Parser")
+            }
+        };
         AstCodeGenerator g = GetGeneratorForGrammar($$"""
             {{grammarProlog}}
             break : 'break' ;
@@ -109,14 +114,20 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
     [Fact]
     public void given_abbreviation_expansion_config_ー_generates_node_classes_and_properties_with_expanded_names()
     {
-        AstConfiguration config = new() { AutomaticAbbreviationExpansion = { CustomWordExpansionsRaw = {
-            [new(["comptime", "ct"])] = "compileTime",
-            [new(["stat"])] = "statistic",
-            [new(["exp"])] = "expression",
-            [new(["aggr"])] = "aggressivity",
-            [new(["id"])] = "id",
-            [new(["Δ"])] = "delta",
-        }}};
+        Configuration config = new() {
+            Ast = new() {
+                AutomaticAbbreviationExpansion = {
+                    CustomWordExpansionsRaw = {
+                        [new(["comptime", "ct"])] = "compileTime",
+                        [new(["stat"])] = "statistic",
+                        [new(["exp"])] = "expression",
+                        [new(["aggr"])] = "aggressivity",
+                        [new(["id"])] = "id",
+                        [new(["Δ"])] = "delta",
+                    }
+                }
+            }
+        };
         AstCodeGenerator g = GetGeneratorForGrammar($$"""
             {{grammarProlog}}
             comptimeIf : '#if' '(' cond=ctExp ')' ;
@@ -529,8 +540,10 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
                  | expr '+' expr #addExpr
                  ;
             """,
-            new AstConfiguration {
-                NodeClassNaming = new() { Prefix = "My", Suffix = "Node" }
+            new Configuration {
+                Ast = new() {
+                    NodeClassNaming = new() { Prefix = "My", Suffix = "Node" }
+                }
             });
         Assert.Equal("""
             public partial record MyPrintStatementNode(MyExpressionNode Expression) : AstNode;

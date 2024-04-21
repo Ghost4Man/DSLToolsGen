@@ -29,6 +29,9 @@ namespace {{ moxy.Class.Namespace }}
             Value = value;
         }
 
+        public {{ moxy.Class.Name }} Transform(Func<string, string> transformer)
+            => new(transformer(Value));
+
         [return: NotNullIfNotNull(nameof(self))]
         public static implicit operator string?({{ moxy.Class.Name }}? self) => self?.Value;
         public static implicit operator ReadOnlySpan<char>({{ moxy.Class.Name }} self) => self.Value;

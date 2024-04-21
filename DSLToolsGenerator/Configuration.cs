@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.ComponentModel;
 
 using DSLToolsGenerator.AST;
@@ -19,11 +20,32 @@ namespace DSLToolsGenerator
         /// </summary>
         public string? GrammarFile { get; init; }
 
+        public HyphenDotIdentifierString? LanguageId { get; init; }
+
+        public string? LanguageDisplayName { get; init; }
+
+        /// <summary>
+        /// File extensions for documents in this language, including the dot,
+        /// e.g. <c>[".abc"]</c>.
+        /// </summary>
+        public string[]? LanguageFileExtensions { get; init; }
+
+        /// <summary>
+        /// Bare name (without file extension) of the C# project file
+        /// (from the root directory of the workspace)
+        /// that contains the language server code.
+        /// </summary>
+        public HyphenDotIdentifierString? CsprojName { get; init; }
+
         /// <summary>
         /// Specifies which generators to run automatically
         /// on <c>dtg generate</c> or <c>dtg watch</c>.
         /// </summary>
-        public OutputSet Outputs { get; init; } = new();
+        public OutputSet Outputs { get; init; } = new() {
+            AST = true,
+            TmLanguageJson = true,
+            VscodeExtension = false,
+        };
 
         [JsonPropertyName("AST")]
         public AstConfiguration Ast { get; init; } = new();
@@ -31,25 +53,58 @@ namespace DSLToolsGenerator
         public SyntaxHighlightingConfiguration SyntaxHighlighting { get; init; } = new();
 
         public VscodeExtensionConfiguration? VscodeExtension { get; init; }
+
+        public HyphenDotIdentifierString GetFallbackLanguageId(Antlr4Ast.Grammar grammar)
+            => new(grammar.GetLanguageName(GrammarFile) ?? "untitled");
+
+        public static bool ReportErrorIfNull<T>(
+            [NotNullWhen(true)] T value,
+            Action<Diagnostic> diagnosticHandler,
+            [CallerArgumentExpression(nameof(value))] string configValueName = null!)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(nameof(configValueName));
+            configValueName = configValueName
+                .TrimPrefix("configuration.")
+                .TrimPrefix("config.")
+                .TrimPrefix("c.");
+
+            if (value is null)
+            {
+                diagnosticHandler(new(DiagnosticSeverity.Error,
+                    $"Missing configuration value for {configValueName}"));
+                return false;
+            }
+            return true;
+        }
     }
 
     public record OutputSet
     {
         [DefaultValue(true)]
-        public bool AST { get; init; } = true;
+        public bool AST { get; init; }
 
         [DefaultValue(true)]
-        public bool TmLanguageJson { get; init; } = true;
+        public bool TmLanguageJson { get; init; }
 
         [DefaultValue(false)]
-        public bool VscodeExtension { get; init; } = false;
+        public bool VscodeExtension { get; init; }
     }
 
     [RegexValidatedString]
     public partial record IdentifierString
     {
         public const string ValidationPattern = /* lang=regex */
-            """^([a-zA-Z0-9_]+)$""";
+            """^([a-zA-Z_][a-zA-Z0-9_]*)$""";
+
+        [GeneratedRegex(ValidationPattern)]
+        public static partial Regex ValidationRegex();
+    }
+
+    [RegexValidatedString]
+    public partial record DottedIdentifierString
+    {
+        public const string ValidationPattern = /* lang=regex */
+            """^([a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*)$""";
 
         [GeneratedRegex(ValidationPattern)]
         public static partial Regex ValidationRegex();
@@ -98,9 +153,9 @@ namespace DSLToolsGenerator.AST
         [DefaultValue("AST.g.cs")]
         public string? OutputPath { get; init; } = "AST.g.cs";
 
-        public string? Namespace { get; init; }
+        public DottedIdentifierString? Namespace { get; init; }
 
-        public string? AntlrNamespace { get; init; }
+        public DottedIdentifierString? AntlrNamespace { get; init; }
 
         public ClassNamingOptions NodeClassNaming { get; init; } = new();
 
@@ -244,28 +299,16 @@ namespace DSLToolsGenerator.SyntaxHighlighting
 
 namespace DSLToolsGenerator.EditorExtensions
 {
-    public record VscodeExtensionConfiguration(
-        HyphenDotIdentifierString ExtensionId, string ExtensionDisplayName,
-        HyphenDotIdentifierString LanguageId, string LanguageDisplayName, string[] LanguageFileExtensions)
+    public record VscodeExtensionConfiguration
     {
         [DefaultValue("vscode-extension")]
         public string OutputDirectory { get; init; } = "vscode-extension";
 
-        public HyphenDotIdentifierString LanguageId { get; init; } = new(LanguageId);
-        public string LanguageDisplayName { get; init; } = LanguageDisplayName;
-
-        /// <summary>
-        /// File extensions for documents in this language, including the dot,
-        /// e.g. <c>[".abc"]</c>.
-        /// </summary>
-        public string[] LanguageFileExtensions { get; init; } = LanguageFileExtensions;
-
-        public HyphenDotIdentifierString ExtensionId { get; init; } = ExtensionId;
-        public string ExtensionDisplayName { get; init; } = ExtensionDisplayName;
-        public HyphenDotSlashIdentifierString LspCustomCommandPrefix { get; init; } = new($"{LanguageId}/");
-        public string LanguageClientName { get; init; } = ExtensionDisplayName;
-        public string CommandCategoryName { get; init; } = ExtensionDisplayName;
-        public required HyphenDotIdentifierString CsprojName { get; init; }
+        public required HyphenDotIdentifierString ExtensionId { get; init; }
+        public required string ExtensionDisplayName { get; init; }
+        public HyphenDotSlashIdentifierString? LspCustomCommandPrefix { get; init; }
+        public string? LanguageClientName { get; init; }
+        public string? CommandCategoryName { get; init; }
 
         [DefaultValue(true)]
         public bool IncludeAstExplorerView { get; init; } = true;

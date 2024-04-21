@@ -1,12 +1,11 @@
 ﻿using System.Collections.Immutable;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 
 using Antlr4Ast;
-
-using DSLToolsGenerator;
 
 namespace DSLToolsGenerator;
 
@@ -275,6 +274,15 @@ static class GrammarExtensions
             return new Rule(name: $"'{literal.Text}'",
                 new() { Items = { new() { Elements = { literal } } } });
         }
+    }
+
+    [return: NotNullIfNotNull(nameof(grammarFileName))]
+    public static string? GetLanguageName(this Grammar grammar, string? grammarFileName = null)
+    {
+        string? name = grammar.Name ?? Path.GetFileNameWithoutExtension(grammarFileName);
+        return name is not (null or "")
+            ? name.TrimSuffix("Lexer").TrimSuffix("Parser")
+            : null;
     }
 }
 

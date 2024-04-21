@@ -8,12 +8,10 @@ namespace DSLToolsGenerator.AST;
 
 public class CSharpModelWriter : CodeGeneratingModelVisitor
 {
-    readonly AstConfiguration config;
+    public CSharpModelWriter(TextWriter output) : base(output) { }
 
-    public CSharpModelWriter(TextWriter output, AstConfiguration config) : base(output)
-    {
-        this.config = config ?? throw new ArgumentNullException(nameof(config));
-    }
+    public required DottedIdentifierString? AntlrNamespace { get; init; }
+    public required DottedIdentifierString? Namespace { get; init; }
 
     string TypeName(string typeName, bool nullable) => typeName + (nullable ? "?" : "");
     string TypeName(NodeClassModel nodeClass, bool nullable) => TypeName(nodeClass.Name, nullable);
@@ -72,9 +70,9 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
             #nullable enable
             using System;
             using System.Collections.Generic;
-            {{(config.AntlrNamespace is string antlrNS ? $"using {antlrNS};" : null)}}
+            {{(AntlrNamespace?.Value is string antlrNS ? $"using {antlrNS};" : null)}}
 
-            {{(config.Namespace is string ns ? $"namespace {ns};" : null)}}
+            {{(Namespace?.Value is string ns ? $"namespace {ns};" : null)}}
 
             public abstract partial record AstNode
             {
@@ -286,23 +284,31 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
     /// </summary>
     /// <param name="model">The codegen model to write to a string.</param>
     /// <returns>A string with C# code representing the <paramref name="model"/>.</returns>
-    public static string ModelToString(IModel model, AstConfiguration? config = null)
+    public static string ModelToString(IModel model, Configuration? config = null)
     {
         var writer = new StringWriter { NewLine = "\n" };
-        var visitor = new CSharpModelWriter(writer, config ?? new());
+        var visitor = FromConfig(config ?? new(), writer);
         visitor.Visit(model);
         return writer.ToString();
     }
 
-    public static string ModelToString(IEnumerable<IModel> models, AstConfiguration? config = null)
+    public static string ModelToString(IEnumerable<IModel> models, Configuration? config = null)
         => ModelToString(models, (v, mm) => v.VisitAll(mm, separator: ""), config);
 
     public static string ModelToString<TModel>(TModel model,
-        Action<CSharpModelWriter, TModel> visitorAction, AstConfiguration? config = null)
+        Action<CSharpModelWriter, TModel> visitorAction, Configuration? config = null)
     {
         var writer = new StringWriter { NewLine = "\n" };
-        var visitor = new CSharpModelWriter(writer, config ?? new());
+        var visitor = FromConfig(config ?? new(), writer);
         visitorAction(visitor, model);
         return writer.ToString();
+    }
+
+    public static CSharpModelWriter FromConfig(Configuration config, TextWriter output)
+    {
+        return new CSharpModelWriter(output) {
+            Namespace = config.Ast.Namespace,
+            AntlrNamespace = config.Ast.AntlrNamespace,
+        };
     }
 }

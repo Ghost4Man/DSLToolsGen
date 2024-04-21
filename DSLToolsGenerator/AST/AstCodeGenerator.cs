@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.RegularExpressions;
 
 using Antlr4Ast;
@@ -10,24 +11,28 @@ namespace DSLToolsGenerator.AST;
 
 public partial class AstCodeGenerator
 {
-    readonly Grammar grammar;
-    readonly Action<Diagnostic> diagnosticHandler;
-    readonly AstConfiguration config;
+    public required Grammar Grammar
+    {
+        get => grammar;
+        [MemberNotNull(nameof(grammar))]
+        init
+        {
+            if (value.Kind == GrammarKind.Lexer)
+                throw new ArgumentException("cannot generate AST from a lexer grammar");
+            grammar = value;
+        }
+    }
+
+    public required Action<Diagnostic> DiagnosticHandler { get; init; }
+    public required ClassNamingOptions NodeClassNaming { get; init; }
+    public required WordExpansionOptions AutomaticAbbreviationExpansion { get; init; }
 
     // Mapping from parser rules to codegen models of AST Node classes.
     // Does not include variants (derived classes) of (abstract) node classes
     // for rules with multiple alternatives.
     readonly Dictionary<Rule, NodeClassModel> nodeClassesByRule = new();
 
-    public AstCodeGenerator(Grammar parserGrammar, Action<Diagnostic> diagnosticHandler, AstConfiguration config)
-    {
-        if (parserGrammar.Kind == GrammarKind.Lexer)
-            throw new ArgumentException("cannot generate AST from a lexer grammar");
-
-        this.grammar = parserGrammar;
-        this.diagnosticHandler = diagnosticHandler;
-        this.config = config;
-    }
+    readonly Grammar grammar;
 
     public AstCodeModel GenerateAstCodeModel()
     {
@@ -57,7 +62,7 @@ public partial class AstCodeGenerator
             // use null to mark this as "currently being generated" to prevent stack overflow
             nodeClassesByRule[parserRule] = null!;
 
-            var (prefix, suffix) = (config.NodeClassNaming.Prefix, config.NodeClassNaming.Suffix);
+            var (prefix, suffix) = (NodeClassNaming.Prefix, NodeClassNaming.Suffix);
 
             string className = prefix + GetGeneratedClassName(parserRule) + suffix;
             List<Alternative> alts = parserRule.AlternativeList.Items;
@@ -106,10 +111,12 @@ public partial class AstCodeGenerator
 
     string? ExpandAbbreviation(string word)
     {
-        var exp = config.AutomaticAbbreviationExpansion;
+        var custom = AutomaticAbbreviationExpansion.CustomWordExpansions;
+        var defaults = AutomaticAbbreviationExpansion.DefaultWordExpansions;
+
         string? expanded = word.ToLowerInvariant() switch {
-            string abbreviated when exp.CustomWordExpansions.GetValueOrDefault(abbreviated) is string s => s,
-            string abbreviated when exp.DefaultWordExpansions.GetValueOrDefault(abbreviated) is string s => s,
+            string abbreviated when custom.GetValueOrDefault(abbreviated) is string s => s,
+            string abbreviated when defaults.GetValueOrDefault(abbreviated) is string s => s,
             [.. ([.., not 's'] singular), 's'] => ExpandAbbreviation(singular)?.Pluralize(),
             _ => null
         };
@@ -157,7 +164,7 @@ public partial class AstCodeGenerator
                 && block.IsMany()
                 && (delimiter is Literal || (delimiter is TokenRef t && !IsTokenTextImportant(t))))
             {
-                diagnosticHandler(new(DiagnosticSeverity.Info,
+                DiagnosticHandler(new(DiagnosticSeverity.Info,
                     $"recognized a pattern of {delimiter}-delimited list of {a}"));
                 rest = newRest;
                 isRepeated = true;
@@ -178,7 +185,7 @@ public partial class AstCodeGenerator
             }
             else
             {
-                diagnosticHandler(new(DiagnosticSeverity.Error,
+                DiagnosticHandler(new(DiagnosticSeverity.Error,
                     $"{ruleRef.Span.FilePath}:{ruleRef.Span.Begin.Line}: " +
                     $"reference to unknown parser rule '{ruleRef.Name}'"));
             }
@@ -275,7 +282,7 @@ public partial class AstCodeGenerator
         bool found = grammar.TryGetRule(tokenRef.Name, out Rule? lexerRule);
         if (!found)
         {
-            diagnosticHandler(new(DiagnosticSeverity.Warning,
+            DiagnosticHandler(new(DiagnosticSeverity.Warning,
                 "token reference could not find the corresponding " +
                 "lexer rule for token reference " + tokenRef));
         }
@@ -337,7 +344,7 @@ public partial class AstCodeGenerator
         }
     }
 
-    bool IsTokenTextImportant(TokenRef token) // TODO: find a better solution
+    bool IsTokenTextImportant(TokenRef token)
         => token.Name.Split('_').LastOrDefault()?.ToUpperInvariant()
             is "ID" or "IDENT" or "IDENTIFIER" or "NAME"
             or "LIT" or "LITERAL" or "VALUE" or "CONST" or "CONSTANT"
@@ -346,4 +353,15 @@ public partial class AstCodeGenerator
 
     [GeneratedRegex(@"([\p{Lu}]+(?![\p{Ll}])|[\p{Lu}][\p{Ll}]+|[0-9]+|[\p{Ll}]+)")]
     private static partial Regex WordFinderRegex();
+
+    public static AstCodeGenerator FromConfig(
+        Configuration config, Grammar grammar, Action<Diagnostic> diagnosticHandler)
+    {
+        return new AstCodeGenerator {
+            Grammar = grammar,
+            DiagnosticHandler = diagnosticHandler,
+            NodeClassNaming = config.Ast.NodeClassNaming,
+            AutomaticAbbreviationExpansion = config.Ast.AutomaticAbbreviationExpansion,
+        };
+    }
 }

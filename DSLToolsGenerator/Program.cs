@@ -101,13 +101,7 @@ GeneratorPipeline InitializePipeline(bool watchForChanges)
                 Console.Error.WriteLine("Error: Missing configuration value " +
                     $"{nameof(Configuration.Ast)}.{nameof(Configuration.Ast.OutputPath)}");
         }),
-        new VscodeExtensionGeneratorRunner(async c => {
-            if (c.VscodeExtension?.OutputDirectory is string outputDir && outputDir is not "")
-                await GenerateVscodeExtension(c, new DirectoryInfo(outputDir));
-            else
-                Console.Error.WriteLine("Error: Missing configuration value " +
-                    $"{nameof(Configuration.VscodeExtension)}.{nameof(Configuration.VscodeExtension.OutputDirectory)}");
-        }));
+        new VscodeExtensionGeneratorRunner(GenerateVscodeExtension));
 }
 
 GeneratorPipelineInputs InitializePipelineInputs(bool watchForChanges)
@@ -118,9 +112,8 @@ GeneratorPipelineInputs InitializePipelineInputs(bool watchForChanges)
 async Task<int> GenerateAstCodeFromGrammarFile(
     Grammar grammar, Configuration config, FileInfo? outputFile)
 {
-    var generator = new AstCodeGenerator(grammar,
-        diagnosticHandler: Console.Error.WriteLine,
-        config.Ast);
+    var generator = AstCodeGenerator.FromConfig(config, grammar,
+        diagnosticHandler: Console.Error.WriteLine);
 
     var model = generator.GenerateAstCodeModel();
 
@@ -130,7 +123,7 @@ async Task<int> GenerateAstCodeFromGrammarFile(
 
     await using var writer = CreateOutputWriter(fileStream);
 
-    var modelWriter = new CSharpModelWriter(writer, config.Ast);
+    var modelWriter = CSharpModelWriter.FromConfig(config, writer);
     modelWriter.Visit(model);
 
     return 0;
@@ -196,14 +189,8 @@ async Task<int> GenerateTextMateGrammar(
     await using var _ = fileStream;
     Stream outputStream = fileStream ?? Console.OpenStandardOutput();
 
-    if (grammar.LexerRules.Count == 0)
-    {
-        Console.Error.WriteLine("Warning: no lexer rules found");
-    }
-
-    var generator = new TmLanguageGenerator(grammar,
-        diagnosticHandler: Console.Error.WriteLine,
-        config.SyntaxHighlighting);
+    var generator = TmLanguageGenerator.FromConfig(config, grammar,
+        diagnosticHandler: Console.Error.WriteLine);
 
     if (verbose)
     {
@@ -234,7 +221,7 @@ async Task<int> GenerateTextMateGrammar(
     return 0;
 }
 
-async Task<int> GenerateVscodeExtension(Configuration config, DirectoryInfo outputDirectory)
+async Task<int> GenerateVscodeExtension(Grammar grammar, Configuration config)
 {
     if (config.VscodeExtension is null)
     {
@@ -242,11 +229,15 @@ async Task<int> GenerateVscodeExtension(Configuration config, DirectoryInfo outp
         return 1;
     }
 
-    var generator = new VscodeExtensionGenerator(config.VscodeExtension);
+    var generator = VscodeExtensionGenerator.FromConfig(grammar,
+        diagnosticHandler: Console.Error.WriteLine,
+        config);
+
+    if (generator is null)
+        return 1; // we assume an error has been reported by FromConfig
 
     generator.GenerateExtension(file => {
-        FileStream? fileStream = null;
-        if (TryOpenWrite(file, out fileStream))
+        if (TryOpenWrite(file, out FileStream? fileStream))
             return new IndentedTextWriter(CreateOutputWriter(fileStream));
         return null;
     });

@@ -1,10 +1,23 @@
 ﻿using System.Text.Json;
-using System.Text.RegularExpressions;
+
+using Antlr4Ast;
 
 namespace DSLToolsGenerator.EditorExtensions;
 
-public class VscodeExtensionGenerator(VscodeExtensionConfiguration config)
+public class VscodeExtensionGenerator
 {
+    public required HyphenDotIdentifierString LanguageId { get; init; }
+    public required string LanguageDisplayName { get; init; }
+    public required string[] LanguageFileExtensions { get; init; }
+    public required string CommandCategoryName { get; init; }
+    public required HyphenDotIdentifierString CsprojName { get; init; }
+    public required string ExtensionDisplayName { get; init; }
+    public required HyphenDotIdentifierString ExtensionId { get; init; }
+    public required string LanguageClientName { get; init; }
+    public required HyphenDotSlashIdentifierString LspCustomCommandPrefix { get; init; }
+    public required string OutputDirectory { get; init; }
+    public required bool IncludeAstExplorerView { get; init; }
+
     public void GenerateExtension(Func<FileInfo, IndentedTextWriter?> fileWriterFactory)
     {
         writeFile("../.vscode/launch.json", GenerateLaunchConfiguration);
@@ -16,14 +29,14 @@ public class VscodeExtensionGenerator(VscodeExtensionConfiguration config)
         writeFile(".vscodeignore", GenerateVscodeignoreFile);
         writeFile("README.md", GenerateReadme);
 
-        if (config.IncludeAstExplorerView)
+        if (IncludeAstExplorerView)
         {
             writeFile("src/ASTProvider.ts", GenerateAstProvider);
         }
 
         void writeFile(string fileName, Action<IndentedTextWriter> generatorFunction)
         {
-            string filePath = Path.Combine(config.OutputDirectory, fileName);
+            string filePath = Path.Combine(OutputDirectory, fileName);
             using var writer = fileWriterFactory(new FileInfo(filePath));
             if (writer is not null)
                 generatorFunction(writer);
@@ -37,7 +50,7 @@ public class VscodeExtensionGenerator(VscodeExtensionConfiguration config)
     /// <param name="output"></param>
     public void GenerateLaunchConfiguration(IndentedTextWriter output)
     {
-        string extensionDirectory = Path.Combine("${workspaceFolder}", config.OutputDirectory)
+        string extensionDirectory = Path.Combine("${workspaceFolder}", OutputDirectory)
             .Replace(Path.DirectorySeparatorChar, '/');
 
         output.WriteCode($$"""
@@ -64,7 +77,7 @@ public class VscodeExtensionGenerator(VscodeExtensionConfiguration config)
                         "preLaunchTask": {
                             "type": "npm",
                             "script": "watch",
-                            "path": "{{config.OutputDirectory}}",
+                            "path": "{{OutputDirectory}}",
                         },
                     }
                 ]
@@ -79,7 +92,7 @@ public class VscodeExtensionGenerator(VscodeExtensionConfiguration config)
         		{
         			"type": "npm",
         			"script": "compile",
-                    "path": "{{config.OutputDirectory}}",
+                    "path": "{{OutputDirectory}}",
         			"group": "build",
         			"presentation": {
         				"panel": "dedicated",
@@ -90,7 +103,7 @@ public class VscodeExtensionGenerator(VscodeExtensionConfiguration config)
         		{
         			"type": "npm",
         			"script": "watch",
-                    "path": "{{config.OutputDirectory}}",
+                    "path": "{{OutputDirectory}}",
         			"isBackground": true,
         			"group": {
         				"kind": "build",
@@ -122,12 +135,12 @@ public class VscodeExtensionGenerator(VscodeExtensionConfiguration config)
         import * as net from 'node:net';
         import * as vscode from 'vscode';
         import { LanguageClient, LanguageClientOptions, ServerOptions, StreamInfo } from 'vscode-languageclient/node';
-        {{(config.IncludeAstExplorerView ? "import { ASTProvider } from './ASTProvider';" : "")}}
+        {{(IncludeAstExplorerView ? "import { ASTProvider } from './ASTProvider';" : "")}}
 
         let client: LanguageClient;
 
         export function activate(context: vscode.ExtensionContext) {
-            const config = vscode.workspace.getConfiguration("{{config.ExtensionId}}");
+            const config = vscode.workspace.getConfiguration("{{ExtensionId}}");
                     
             // load the language server path and arguments from extension settings
             let languageServerCommand = config.get("languageServer.path") as string;
@@ -164,7 +177,7 @@ public class VscodeExtensionGenerator(VscodeExtensionConfiguration config)
 
             // Options to control the language client
             const clientOptions: LanguageClientOptions = {
-                documentSelector: [{ scheme: 'file', language: '{{config.LanguageId}}' }],
+                documentSelector: [{ scheme: 'file', language: '{{LanguageId}}' }],
                 synchronize: {
                     // Notify the server about file changes to '.xyz' files contained in the workspace
                     //fileEvents: workspace.createFileSystemWatcher('**/.xyz')
@@ -172,24 +185,24 @@ public class VscodeExtensionGenerator(VscodeExtensionConfiguration config)
             };
 
             // Create the language client and start the client.
-            client = new LanguageClient('{{config.LanguageId}}', '{{config.LanguageClientName}}', serverOptions, clientOptions);
+            client = new LanguageClient('{{LanguageId}}', '{{LanguageClientName}}', serverOptions, clientOptions);
 
-            {{_ => { if (config.IncludeAstExplorerView) output.WriteCode($$"""
+            {{_ => { if (IncludeAstExplorerView) output.WriteCode($$"""
                 // Create an AST tree view and handle AST change notifications from the server
                 const astProvider = new ASTProvider();
-                client.onNotification('{{config.LspCustomCommandPrefix}}ast', notification => {
-                    console.log("Received {{config.LspCustomCommandPrefix}}ast notification: ", notification);
+                client.onNotification('{{LspCustomCommandPrefix}}ast', notification => {
+                    console.log("Received {{LspCustomCommandPrefix}}ast notification: ", notification);
                     astProvider.setRoot(notification.root);
                 });
                 context.subscriptions.push(
-                    vscode.window.registerTreeDataProvider('{{config.ExtensionId}}.astExplorer', astProvider));
+                    vscode.window.registerTreeDataProvider('{{ExtensionId}}.astExplorer', astProvider));
                 """); }}}
 
             // Start the client. This will also launch the server
             client.start();
 
             context.subscriptions.push(
-                vscode.commands.registerCommand('{{config.ExtensionId}}.restartLanguageServer', () => { client.restart(); }));
+                vscode.commands.registerCommand('{{ExtensionId}}.restartLanguageServer', () => { client.restart(); }));
         }
 
         export function deactivate(): Thenable<void> | undefined {
@@ -358,8 +371,8 @@ public class VscodeExtensionGenerator(VscodeExtensionConfiguration config)
     /// <param name="output"></param>
     public void GenerateManifest(IndentedTextWriter output) => output.WriteCode($$"""
         {
-          "name": "{{config.ExtensionId}}",
-          "displayName": {{AsJson(config.ExtensionDisplayName)}},
+          "name": "{{ExtensionId}}",
+          "displayName": {{AsJson(ExtensionDisplayName)}},
           "description": "",
           "version": "0.0.1",
           "engines": {
@@ -370,50 +383,50 @@ public class VscodeExtensionGenerator(VscodeExtensionConfiguration config)
           "contributes": {
             "languages": [
               {
-                "id": "{{config.LanguageId}}",
-                "aliases": [{{AsJson(config.LanguageDisplayName)}}],
-                "extensions": {{AsJson(config.LanguageFileExtensions)}},
+                "id": "{{LanguageId}}",
+                "aliases": [{{AsJson(LanguageDisplayName)}}],
+                "extensions": {{AsJson(LanguageFileExtensions)}},
                 "configuration": "./language-configuration.json"
               }
             ],
             "grammars": [
               {
-                "language": "{{config.LanguageId}}",
-                "scopeName": "source.{{config.LanguageId}}",
-                "path": "./syntaxes/{{config.LanguageId}}.tmLanguage.json"
+                "language": "{{LanguageId}}",
+                "scopeName": "source.{{LanguageId}}",
+                "path": "./syntaxes/{{LanguageId}}.tmLanguage.json"
               }
             ],
             "configuration": [
               {
                 "title": "LSP",
                 "properties": {
-                  "{{config.ExtensionId}}.languageServer.path": {
+                  "{{ExtensionId}}.languageServer.path": {
                     "type": "string",
                     "default": null,
-                    "description": {{AsJson($"The path to the {config.LanguageDisplayName} language server executable")}}
+                    "description": {{AsJson($"The path to the {LanguageDisplayName} language server executable")}}
                   },
-                  "{{config.ExtensionId}}.languageServer.args": {
+                  "{{ExtensionId}}.languageServer.args": {
                     "type": "array",
                     "items": { "type": "string" },
                     "default": ["--ls"],
-                    "description": {{AsJson($"The command-line arguments passed to the {config.LanguageDisplayName} language server")}}
+                    "description": {{AsJson($"The command-line arguments passed to the {LanguageDisplayName} language server")}}
                   }
                 }
               }
             ],
             "commands": [
               {
-                "command": "{{config.ExtensionId}}.restartLanguageServer",
-                "category": "{{config.CommandCategoryName}}",
+                "command": "{{ExtensionId}}.restartLanguageServer",
+                "category": "{{CommandCategoryName}}",
                 "title": "Restart Language Server",
                 "icon": "$(debug-restart)"
               }
-            ]{{(config.IncludeAstExplorerView ? $$"""
+            ]{{(IncludeAstExplorerView ? $$"""
                 ,
                 "views": {
                   "explorer": [
                     {
-                      "id": "{{config.ExtensionId}}.astExplorer",
+                      "id": "{{ExtensionId}}.astExplorer",
                       "name": "AST Explorer"
                     }
                   ]
@@ -421,7 +434,7 @@ public class VscodeExtensionGenerator(VscodeExtensionConfiguration config)
                 """ : "")}}
           },
           "scripts": {
-            "vscode:prepublish": "npm run compile && dotnet publish ../{{config.CsprojName}}.csproj -o ./LanguageServer",
+            "vscode:prepublish": "npm run compile && dotnet publish ../{{CsprojName}}.csproj -o ./LanguageServer",
             "compile": "tsc -b",
             "watch": "tsc -b -w"
           },
@@ -495,4 +508,29 @@ public class VscodeExtensionGenerator(VscodeExtensionConfiguration config)
         """);
 
     static string AsJson(object obj) => JsonSerializer.Serialize(obj);
+
+    public static VscodeExtensionGenerator? FromConfig(
+        Grammar grammar, Action<Diagnostic> diagnosticHandler, Configuration config)
+    {
+        if (!Configuration.ReportErrorIfNull(config.VscodeExtension, diagnosticHandler)
+            || !Configuration.ReportErrorIfNull(config.CsprojName, diagnosticHandler))
+            return null;
+
+        var languageId = config.LanguageId ?? config.GetFallbackLanguageId(grammar);
+
+        return new VscodeExtensionGenerator {
+            LanguageId = languageId.Transform(s => s.ToLowerInvariant()),
+            LanguageDisplayName = config.LanguageDisplayName ?? languageId,
+            LanguageFileExtensions = config.LanguageFileExtensions
+                ?? [$".{languageId.Value.ToLowerInvariant()}"],
+            ExtensionId = config.VscodeExtension.ExtensionId,
+            ExtensionDisplayName = config.VscodeExtension.ExtensionDisplayName,
+            LspCustomCommandPrefix = new($"{languageId}/"),
+            LanguageClientName = config.VscodeExtension.ExtensionDisplayName,
+            CommandCategoryName = config.VscodeExtension.ExtensionDisplayName,
+            IncludeAstExplorerView = config.VscodeExtension.IncludeAstExplorerView,
+            OutputDirectory = config.VscodeExtension.OutputDirectory,
+            CsprojName = config.CsprojName,
+        };
+    }
 }

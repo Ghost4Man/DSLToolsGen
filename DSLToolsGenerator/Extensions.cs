@@ -38,7 +38,12 @@ static class StringExtensions
         ArgumentNullException.ThrowIfNull(str);
         return str + suffix;
     }
-    public static string TrimSuffix(this string str, string suffix) => str.EndsWith(suffix) ? str[..^suffix.Length] : str;
+
+    public static string TrimSuffix(this string str, string suffix)
+        => str.EndsWith(suffix) ? str[..^suffix.Length] : str;
+
+    public static string TrimPrefix(this string str, string prefix)
+        => str.StartsWith(prefix) ? str[prefix.Length..] : str;
 
     public static string ReplaceFirst(this string str, string oldValue, string newValue)
         => str.IndexOf(oldValue) is int index and >= 0

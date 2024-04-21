@@ -6,17 +6,16 @@ using System.Text.RegularExpressions;
 
 using Antlr4Ast;
 
-using GrammarAST = Antlr4Ast.SyntaxNode;
-
 namespace DSLToolsGenerator.SyntaxHighlighting;
 
-public partial class TmLanguageGenerator(
-    Grammar grammar,
-    Action<Diagnostic> diagnosticHandler,
-    SyntaxHighlightingConfiguration config)
+public partial class TmLanguageGenerator
 {
-    public TmLanguageGenerator(Grammar grammar, Action<Diagnostic> diagnosticHandler)
-        : this(grammar, diagnosticHandler, new()) { }
+    public required Grammar Grammar { get; init; }
+    public required Action<Diagnostic> DiagnosticHandler { get; init; }
+    public required HyphenDotIdentifierString LanguageId { get; init; }
+    public required string LanguageDisplayName { get; init; }
+    public required IReadOnlyList<RuleConflict> RuleConflicts { get; init; }
+    public required IReadOnlyDictionary<string, RuleOptions>? RuleSettings { get; init; }
 
     readonly JsonSerializerOptions jsonOptions = new() {
         WriteIndented = true,
@@ -34,24 +33,24 @@ public partial class TmLanguageGenerator(
 
     public TmLanguageDocument GenerateTextMateLanguage()
     {
-        var languageName = grammar.Name is null or "" ? "untitled" : grammar.Name.TrimSuffix("Lexer");
+        string lowercaseLanguageId = LanguageId.Value.ToLowerInvariant();
 
-        IEnumerable<Rule> implicitTokenRules = grammar.GetImplicitTokenRules();
+        IEnumerable<Rule> implicitTokenRules = Grammar.GetImplicitTokenRules();
 
         var rulesToHighlight = implicitTokenRules
-            .Concat(grammar.LexerRules.Where(ShouldHighlight));
+            .Concat(Grammar.LexerRules.Where(ShouldHighlight));
 
         // TODO: reorder and/or transform the rules to fix the mismatch between
         //       ANTLR's longest-match and TextMate's leftmost-match behavior
 
         List<Pattern> patterns = [];
 
-        foreach (RuleConflict conflict in config.RuleConflicts)
+        foreach (RuleConflict conflict in RuleConflicts)
         {
             if (conflict.RuleNames is not [string ruleName1, string ruleName2])
             {
-                diagnosticHandler(new(DiagnosticSeverity.Error, "config option " +
-                    $"{nameof(config.RuleConflicts)}.{nameof(conflict.RuleNames)}" +
+                DiagnosticHandler(new(DiagnosticSeverity.Error, "config option " +
+                    $"{nameof(RuleConflicts)}.{nameof(conflict.RuleNames)}" +
                     " currently only supports 2 rules"));
                 continue;
             }
@@ -77,20 +76,20 @@ public partial class TmLanguageGenerator(
         patterns.AddRange(rulesToHighlight.Select(r => new Pattern(
             Comment: $"rule {r.Name}",
             Match: MakeRegex(r, parentRules: []),
-            Name: $"{GetScopeNameForRule(r)}.{languageName.ToLowerInvariant()}")));
+            Name: $"{GetScopeNameForRule(r)}.{lowercaseLanguageId}")));
 
         return new TmLanguageDocument(
-            Name: languageName,
-            ScopeName: $"source.{languageName.ToLowerInvariant()}",
+            Name: LanguageDisplayName,
+            ScopeName: $"source.{lowercaseLanguageId}",
             Patterns: patterns
         );
     }
 
     Rule? FindRuleOrError(string ruleName)
     {
-        if (!grammar.TryGetRule(ruleName, out Rule? rule))
+        if (!Grammar.TryGetRule(ruleName, out Rule? rule))
         {
-            diagnosticHandler(new(DiagnosticSeverity.Error,
+            DiagnosticHandler(new(DiagnosticSeverity.Error,
                 $"could not find a rule named '{ruleName}'"));
         }
         return rule;
@@ -110,7 +109,7 @@ public partial class TmLanguageGenerator(
 
     string GetScopeNameForRule(Rule rule)
     {
-        if (config.RuleSettings?.GetValueOrDefault(rule.Name)
+        if (RuleSettings?.GetValueOrDefault(rule.Name)
                 is { TextMateScopeName: string scopeName })
             return scopeName;
 
@@ -138,7 +137,7 @@ public partial class TmLanguageGenerator(
         // check whether all non-null alternatives are all alphanumeric literals
         var allTerminals = alts.SelectMany(a => a.Elements);
         return allTerminals.All(t => t switch {
-            TokenRef r when r.GetRuleOrNull(grammar) is Rule rule => RuleIsKeyword(rule),
+            TokenRef r when r.GetRuleOrNull(Grammar) is Rule rule => RuleIsKeyword(rule),
             Literal(string value) => KeywordlikePattern().IsMatch(value),
             _ => false
         });
@@ -177,9 +176,9 @@ public partial class TmLanguageGenerator(
         string getGroupOptions()
         {
             bool inheritedCaseInsensitivity =
-                parentRule?.GetCaseInsensitivity(grammar, parentRule)
+                parentRule?.GetCaseInsensitivity(Grammar, parentRule)
                 ?? false; // ANTLR4 default is caseInsensitivity=false
-            bool? ruleCaseInsensitivity = rule.GetCaseInsensitivity(grammar, parentRule);
+            bool? ruleCaseInsensitivity = rule.GetCaseInsensitivity(Grammar, parentRule);
             return (inheritedCaseInsensitivity, ruleCaseInsensitivity) switch {
                 (false, true) => "i",
                 (true, false) => "-i",
@@ -188,7 +187,7 @@ public partial class TmLanguageGenerator(
         }
     }
 
-    internal string MakeRegex(GrammarAST node, IEnumerable<Rule> parentRules)
+    internal string MakeRegex(Antlr4Ast.SyntaxNode node, IEnumerable<Rule> parentRules)
     {
         string regex = node switch {
             Alternative a => a.Elements.Select(c => MakeRegex(c, parentRules)).MakeString(),
@@ -203,7 +202,7 @@ public partial class TmLanguageGenerator(
             CharRange r => $"[{r.From}-{r.To}]", //$"[\\u{a:04X}-\\u{b:04X}]",
             DotElement => ".",
             TokenRef(string name) tr =>
-                tr.GetRuleOrNull(grammar) is Rule r ? MakeRegex(r, parentRules) :
+                tr.GetRuleOrNull(Grammar) is Rule r ? MakeRegex(r, parentRules) :
                 name is "EOF" ? @"\z" :
                 RegexWarningComment($"unknown ref {name} at line {tr.Span.Begin.Line}"),
             Literal(string value) { IsNot: true } => $"[^{EscapeAsRegex(value)}]",
@@ -228,7 +227,7 @@ public partial class TmLanguageGenerator(
     string RegexWarningComment(string text, bool emitWarning = true, bool forceFail = false)
     {
         if (emitWarning)
-            diagnosticHandler(new(DiagnosticSeverity.Warning, text));
+            DiagnosticHandler(new(DiagnosticSeverity.Warning, text));
 
         // we need to escape/replace the parentheses (since they end the comment)
         string commentText = text.Replace('(', '{').Replace(')', '}');
@@ -260,4 +259,25 @@ public partial class TmLanguageGenerator(
 
     [GeneratedRegex(@"^([a-zA-Z]|\w[\w\s\-]*[a-zA-Z][\w\s\-]*)$")]
     private static partial Regex KeywordlikePattern();
+
+    public static TmLanguageGenerator FromConfig(
+        Configuration config, Grammar grammar, Action<Diagnostic> diagnosticHandler)
+    {
+        var languageId = config.LanguageId ?? config.GetFallbackLanguageId(grammar);
+
+        if (grammar.LexerRules.Count == 0)
+        {
+            diagnosticHandler(new(DiagnosticSeverity.Warning,
+                "no lexer rules found"));
+        }
+
+        return new TmLanguageGenerator {
+            Grammar = grammar,
+            DiagnosticHandler = diagnosticHandler,
+            RuleConflicts = config.SyntaxHighlighting.RuleConflicts,
+            RuleSettings = config.SyntaxHighlighting.RuleSettings,
+            LanguageId = languageId,
+            LanguageDisplayName = config.LanguageDisplayName ?? languageId.Value,
+        };
+    }
 }

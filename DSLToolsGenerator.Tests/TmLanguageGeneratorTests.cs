@@ -158,9 +158,11 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
             WS : [ \t\r\n] -> channel(HIDDEN) ;
             """,
             config: new() {
-                RuleSettings = new Dictionary<string, RuleOptions>() {
-                    ["TAG"] = new(TextMateScopeName: "entity.name.tag"),
-                    ["BOLD"] = new(TextMateScopeName: "markup.bold"),
+                SyntaxHighlighting = new() {
+                    RuleSettings = new Dictionary<string, RuleOptions>() {
+                        ["TAG"] = new(TextMateScopeName: "entity.name.tag"),
+                        ["BOLD"] = new(TextMateScopeName: "markup.bold"),
+                    }
                 }
             });
         const string input = "abc **this is bold** <sometag>";
@@ -184,11 +186,13 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
             WS : [ \t\r\n] -> channel(HIDDEN) ;
             """,
             config: new() {
-                RuleSettings = new Dictionary<string, RuleOptions>() {
-                    ["TAG"] = new(TextMateScopeName: "entity.name.tag"),
-                    ["BOLD"] = new(TextMateScopeName: "markup.bold"),
-                    ["'if'"] = new(TextMateScopeName: "keyword.control.if"),
-                    ["':'"] = new(TextMateScopeName: "punctuation.colon"),
+                SyntaxHighlighting = new() {
+                    RuleSettings = new Dictionary<string, RuleOptions>() {
+                        ["TAG"] = new(TextMateScopeName: "entity.name.tag"),
+                        ["BOLD"] = new(TextMateScopeName: "markup.bold"),
+                        ["'if'"] = new(TextMateScopeName: "keyword.control.if"),
+                        ["':'"] = new(TextMateScopeName: "punctuation.colon"),
+                    }
                 }
             });
         const string input = "<script> if a: **b**";
@@ -256,12 +260,14 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
     }
 
     (TmLanguageGenerator, Antlr4Ast.Grammar) GetTmLanguageGeneratorForGrammar(
-        string grammarCode, SyntaxHighlightingConfiguration? config = null)
+        string grammarCode, Configuration? config = null)
     {
         var grammar = Antlr4Ast.Grammar.Parse(grammarCode);
         grammar.Analyze();
         Assert.Empty(grammar.ErrorMessages);
-        return (new TmLanguageGenerator(grammar, handleDiagnostic, config ?? new()), grammar);
+        var generator = TmLanguageGenerator.FromConfig(
+            config ?? new(), grammar, handleDiagnostic);
+        return (generator, grammar);
 
         void handleDiagnostic(Diagnostic d)
         {

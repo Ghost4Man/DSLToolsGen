@@ -64,8 +64,8 @@ public partial class TmLanguageGenerator
                 Match: lookahead(rule1, "L1") + lookahead(rule2, "L2") +
                     @"(?:(?<L1match>\k<L1>)(?!.+?\k<restL2>$)|(?<L2match>\k<L2>))",
                 Captures: new() {
-                    ["5"] = new Capture(GetScopeNameForRule(rule1), null),
-                    ["6"] = new Capture(GetScopeNameForRule(rule2), null),
+                    ["5"] = new Capture(getFullScopeNameForRule(rule1), null),
+                    ["6"] = new Capture(getFullScopeNameForRule(rule2), null),
                 }
             ));
 
@@ -76,13 +76,16 @@ public partial class TmLanguageGenerator
         patterns.AddRange(rulesToHighlight.Select(r => new Pattern(
             Comment: $"rule {r.Name}",
             Match: MakeRegex(r, parentRules: []),
-            Name: $"{GetScopeNameForRule(r)}.{lowercaseLanguageId}")));
+            Name: getFullScopeNameForRule(r))));
 
         return new TmLanguageDocument(
             Name: LanguageDisplayName,
             ScopeName: $"source.{lowercaseLanguageId}",
             Patterns: patterns
         );
+
+        string getFullScopeNameForRule(Rule r)
+            => $"{GetScopeNameForRule(r)}.{lowercaseLanguageId}";
     }
 
     Rule? FindRuleOrError(string ruleName)

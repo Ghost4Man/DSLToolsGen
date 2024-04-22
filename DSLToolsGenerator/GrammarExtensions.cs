@@ -301,6 +301,9 @@ static class RuleExtensions
         bool? ruleCaseInsensitivity = rule.Options.FindBool("caseInsensitive");
         return ruleCaseInsensitivity ?? parentRuleCaseInsensitivity ?? grammarCaseInsensitivity;
     }
+
+    public static IEnumerable<Alternative> GetAlts(this Rule rule)
+        => rule.AlternativeList.Items.WhereNotNull();
 }
 
 static class OptionListExtensions

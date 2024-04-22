@@ -1,4 +1,5 @@
 ﻿using System.Reactive.Linq;
+using System.Runtime.InteropServices;
 
 using Microsoft.Extensions.FileProviders;
 
@@ -113,6 +114,22 @@ static class EnumerableExtensions
         var first = enumerator.Current;
         if (enumerator.MoveNext()) return default; // more than one
         return first; // exactly one
+    }
+}
+
+public static class DictionaryExtensions
+{
+    public static TValue GetValueOrInitialize<TKey, TValue>(this Dictionary<TKey, TValue> dictionary,
+        TKey key, Func<TKey, TValue> initializer)
+        where TKey : notnull
+    {
+        ref TValue? value = ref CollectionsMarshal.GetValueRefOrAddDefault(
+            dictionary, key, out bool exists);
+        if (!exists)
+        {
+            value = initializer(key);
+        }
+        return value!;
     }
 }
 

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -136,16 +137,69 @@ public partial class TmLanguageGenerator
         };
     }
 
-    bool RuleIsKeyword(Rule rule)
+    internal bool RuleIsKeyword(Rule rule)
     {
-        var alts = rule.AlternativeList.Items.Where(x => x != null);
-        // check whether all non-null alternatives are all alphanumeric literals
-        var allTerminals = alts.SelectMany(a => a.Elements);
-        return allTerminals.All(t => t switch {
-            TokenRef r when r.GetRuleOrNull(Grammar) is Rule rule => RuleIsKeyword(rule),
-            Literal(string value) => KeywordlikePattern().IsMatch(value),
+        // Cache the results to prevent stack overflow on recursive rules
+        Dictionary<Rule, bool> ruleIsKeywordCache = new();
+        Dictionary<Rule, bool> ruleIsAllowedInKeywordCache = new();
+        return ruleIsKeyword(rule);
+
+        // Consider a rule to represent (match) a keyword iff
+        // all of its (non-null) alts are "keyword-like"
+        bool ruleIsKeyword(Rule rule)
+            => ruleIsKeywordCache.GetValueOrInitialize(rule,
+                _ => rule.GetAlts().All(altIsKeywordlike));
+
+        bool altIsKeywordlike(Alternative alt)
+            => alt.Elements.Any(containsALetter)
+            && alt.Elements.All(isAllowedInKeyword);
+
+        // we only consider "static" letters, not ranges, sets, negations...
+        bool containsALetter(SyntaxElement element) => element switch {
+            { IsNot: true } => false,
+            TokenRef r when r.GetRuleOrNull(Grammar) is Rule rule
+                => ruleIsKeyword(rule),
+            // `(At 'foo' 'bar' | '!important)`
+            Block b => b.Items.WhereNotNull().All(altIsKeywordlike),
+            Literal(string value)
+                => value.Any(char.IsLetter) || value.Contains('_'),
+            var e when MatchesSingleLetter(e) => true,
             _ => false
-        });
+        };
+
+        // e.g. AT in rule `IMPORT : AT 'import' ;`
+        bool ruleIsAllowedInKeyword(Rule rule)
+            => ruleIsAllowedInKeywordCache.GetValueOrInitialize(rule,
+                _ => ruleIsKeyword(rule) || rule.GetAlts().All(altIsAllowedInKeyword));
+
+        bool altIsAllowedInKeyword(Alternative alt)
+            => alt.Elements.All(isAllowedInKeyword);
+
+        bool isAllowedInKeyword(SyntaxElement element) => element switch {
+            { IsNot: true } => false, // negations are not allowed
+            TokenRef r when r.GetRuleOrNull(Grammar) is Rule rule
+                => ruleIsAllowedInKeyword(rule),
+            Literal => true,
+            _ => containsALetter(element),
+        };
+    }
+
+    bool MatchesSingleLetter(SyntaxElement element)
+    {
+        return element switch {
+            Literal([char c]) => char.IsLetter(c) || c == '_',
+            // letters in case-insensitive keyword rules: [Ss][Ee][Tt]
+            LexerCharSet { Value: [char c1, char c2] }
+                => areTheSameLetter(c1, c2),
+            // letters in case-insensitive keyword rules: ('S'|'s')('E'|'e')('T'|'t')
+            LexerBlock { Items: [Literal([char c1]), Literal([char c2])] }
+                => areTheSameLetter(c1, c2),
+            _ => false,
+        };
+
+        static bool areTheSameLetter(char c1, char c2)
+            => char.IsLetter(c1)
+            && char.ToUpperInvariant(c1) == char.ToUpperInvariant(c2);
     }
 
     // Whether to generate a syntax highlighting pattern for this lexer rule
@@ -261,9 +315,6 @@ public partial class TmLanguageGenerator
 
     [GeneratedRegex(@"([\n\r\f\t(){}\[\]\-\\.?*+/|^$])")]
     private static partial Regex RegexControlCharactersPattern();
-
-    [GeneratedRegex(@"^([a-zA-Z]|\w[\w\s\-]*[a-zA-Z][\w\s\-]*)$")]
-    private static partial Regex KeywordlikePattern();
 
     public static TmLanguageGenerator FromConfig(
         Configuration config, Grammar grammar, Action<Diagnostic> diagnosticHandler)

@@ -68,6 +68,31 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
     }
 
     [Theory]
+    [InlineData("'if'", true)]
+    [InlineData("'SELECT'", true)]
+    [InlineData("('SELECT' | 'select')", true)]
+    [InlineData("[Ff][oO][Rr]", true)]
+    [InlineData("('F'|'f')('o'|'O')('R'|'r')", true)]
+    [InlineData("F ('o'|'O') [rR]", true)]
+    [InlineData("'@import'", true)]
+    [InlineData("'@' 'import'", true)]
+    [InlineData("AT 'import'", true)]
+    [InlineData("F AT", true)]
+    [InlineData("'[import]'", true)]
+    [InlineData("'_'", true)]
+    [InlineData("AT", false)]
+    [InlineData("AT | 'at'", false)]
+    [InlineData("[a-z]", false)]
+    [InlineData("[az]", false)]
+    [InlineData("'/*' (ABC | .) '*/'", false)]
+    public void RuleIsKeyword_ー_correctly_recognizes_keyword_rules(string antlrRuleBody, bool expectedIsKeyword)
+    {
+        (TmLanguageGenerator gen, var grammar) = GetTmLanguageGeneratorForGrammar(
+            $"lexer grammar ExampleLexer; ABC : {antlrRuleBody} ; F : 'f' ; AT : '@' ;");
+        Assert.Equal(expectedIsKeyword, gen.RuleIsKeyword(grammar.LexerRules[0]));
+    }
+
+    [Theory]
     [InlineData("grammar")]
     [InlineData("lexer grammar")]
     public void given_lexer_grammar_with_keywords_ー_generated_TM_grammar_tokenizes_correctly(string grammarKind)

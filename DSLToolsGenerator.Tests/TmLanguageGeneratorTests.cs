@@ -41,6 +41,19 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
     }
 
     [Theory]
+    [InlineData(@"'IF'", @"\b(?:IF)\b")]
+    [InlineData(@"'@import'", @"(?:@import)\b")]
+    [InlineData(@"'do:'", @"\b(?:do:)")]
+    [InlineData(@"'.sync.'", @"(?:\.sync\.)")]
+    [InlineData(@"[Ss] [eE] T", @"\b(?:[Ss][eE](?:[Tt]))\b")]
+    public void MakeRegex_given_keyword_rule_ー_generates_regex_with_correct_word_boundary_anchors(string antlrRuleBody, string expectedRegex)
+    {
+        (TmLanguageGenerator gen, var grammar) = GetTmLanguageGeneratorForGrammar(
+            $"lexer grammar ExampleLexer; ABC : {antlrRuleBody} ; T : [Tt] ;");
+        Assert.Equal(expectedRegex, gen.MakeRegex(grammar.LexerRules[0], parentRules: []));
+    }
+
+    [Theory]
     [InlineData(null, null, null,   @"(?:x(?:[A-Z])+|@abc)")]
     [InlineData(null, false, false, @"(?:x(?:[A-Z])+|@abc)")]
     [InlineData(true, false, null,  @"(?:x(?:[A-Z])+|@abc)")]
@@ -95,7 +108,7 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
     [Theory]
     [InlineData("grammar")]
     [InlineData("lexer grammar")]
-    public void given_lexer_grammar_with_keywords_ー_generated_TM_grammar_tokenizes_correctly(string grammarKind)
+    public void given_simple_grammar_with_keywords_ー_generated_TM_grammar_tokenizes_correctly(string grammarKind)
     {
         (TmLanguageGenerator g, _) = GetTmLanguageGeneratorForGrammar($"""
             {grammarKind} ExampleLexer;
@@ -129,7 +142,137 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
     }
 
     [Fact]
-    public void given_ANTLR_lexer_grammar_with_character_sets_ー_generated_TM_grammar_correctly_tokenizes_identifiers()
+    public void given_implicit_token_literals_with_symbols_ー_generated_TM_grammar_correctly_tokenizes_all_keywords()
+    {
+        (TmLanguageGenerator g, _) = GetTmLanguageGeneratorForGrammar("""
+            grammar ExampleLexer;
+            stmt : '<if>' ID 'then:' stmt+ '</if>'  #ifStmt
+                 | PRINT ID                         #printStmt
+                 | '.lock' ID                       #lockStmt ;
+            PRINT : At 'print' ;
+            fragment At : '@' ;
+            ID : [a-zA-Z_]+ ;
+            WS : [ \t\r\n] -> channel(HIDDEN) ;
+            """);
+        const string input = "<if> if then: @print x .lock y </if>";
+        string generatedTextMateGrammar = g.GenerateTextMateLanguageJson();
+        var tokens = TokenizeString(generatedTextMateGrammar, "source.example", input);
+        Assert.Collection(tokens,
+            ExpectedToken("<if>", ["keyword.'<if>'.example"]),
+            ExpectedToken("if", ["variable.id.example"]),
+            ExpectedToken("then:", ["keyword.'then:'.example"]),
+            ExpectedToken("@print", ["keyword.print.example"]),
+            ExpectedToken("x", ["variable.id.example"]),
+            ExpectedToken(".lock", ["keyword.'.lock'.example"]),
+            ExpectedToken("y", ["variable.id.example"]),
+            ExpectedToken("</if>", ["keyword.'</if>'.example"]));
+    }
+
+    [Fact]
+    public void given_manual_case_insensitive_keyword_rules_ー_generated_TM_grammar_correctly_tokenizes_all_keywords()
+    {
+        (TmLanguageGenerator g, _) = GetTmLanguageGeneratorForGrammar("""
+            grammar ExampleLexer;
+            stmt : ('for each' | FOR) ID DO stmt   #ifStmt
+                 | PRINT ID                        #printStmt ;
+            FOR : 'for' | 'FOR' ;
+            DO : ([dD][Oo]) ;
+            PRINT : (At [Pp] [rR] I [Nn] T) ;
+            T : ('T' | 't') ;
+            fragment I : 'i' | 'I' ;
+            At : '@' ;
+            ID : [a-zA-Z_]+ ;
+            WS : [ \t\r\n] -> channel(HIDDEN) ;
+            """);
+        const string input = "for each a_b Do @PriNt DogName";
+        string generatedTextMateGrammar = g.GenerateTextMateLanguageJson();
+        var tokens = TokenizeString(generatedTextMateGrammar, "source.example", input);
+        Assert.Collection(tokens,
+            ExpectedToken("for each", ["keyword.'for_each'.example"]),
+            ExpectedToken("a_b", ["variable.id.example"]),
+            ExpectedToken("Do", ["keyword.do.example"]),
+            ExpectedToken("@PriNt", ["keyword.print.example"]),
+            ExpectedToken("DogName", ["variable.id.example"]));
+    }
+
+    [Fact]
+    public void given_lexer_grammar_with_nonword_keywords_ー_generated_TM_grammar_tokenizes_correctly()
+    {
+        (TmLanguageGenerator g, _) = GetTmLanguageGeneratorForGrammar("""
+            lexer grammar ExampleLexer;
+            IF : '#if' ;
+            OVERRIDE : '@override' ;
+            INVALID_KW : [#@] ID ;
+            FOREACH : 'for each' ;
+            ID : [a-zA-Z]+ ;
+            WS : [ \t\r\n] -> channel(HIDDEN) ;
+            """);
+        const string input = """
+            #if if
+            @override foo;
+            for each #ifo@overrideableitems;
+            afor eachb;
+            """;
+        string generatedTextMateGrammar = g.GenerateTextMateLanguageJson();
+        var tokens = TokenizeString(generatedTextMateGrammar, "source.example", input);
+        Assert.Collection(tokens,
+            ExpectedToken("#if", ["keyword.if.example"]),
+            ExpectedToken("if", ["variable.id.example"]),
+            ExpectedToken("@override", ["keyword.override.example"]),
+            ExpectedToken("foo", ["variable.id.example"]),
+            ExpectedToken("for each", ["keyword.foreach.example"]),
+            ExpectedToken("#ifo", ["other.invalid_kw.example"]),
+            ExpectedToken("@overrideableitems", ["other.invalid_kw.example"]),
+            ExpectedToken("afor", ["variable.id.example"]),
+            ExpectedToken("eachb", ["variable.id.example"]));
+    }
+
+    [Fact]
+    public void given_lexer_grammar_with_alternation_of_literals_ー_generated_TM_grammar_finds_longest_match_within_rule()
+    {
+        (TmLanguageGenerator g, _) = GetTmLanguageGeneratorForGrammar("""
+            lexer grammar ExampleLexer;
+            CMD : '$Get' | '$Set' | '$GetValue' | '$SetValue' ;
+            ID : '$'? [a-zA-Z]+ ;
+            WS : [ \t\r\n] -> channel(HIDDEN) ;
+            """);
+        const string input = """
+            $Set x
+            $GetValue x
+            """;
+        string generatedTextMateGrammar = g.GenerateTextMateLanguageJson();
+        var tokens = TokenizeString(generatedTextMateGrammar, "source.example", input);
+        Assert.Collection(tokens,
+            ExpectedToken("$Set", ["keyword.cmd.example"]),
+            ExpectedToken("x", ["variable.id.example"]),
+            ExpectedToken("$GetValue", ["keyword.cmd.example"]),
+            ExpectedToken("x", ["variable.id.example"]));
+    }
+
+    [Fact]
+    public void given_lexer_grammar_with_alternation_of_literals_ー_generated_TM_grammar_finds_longest_match_between_rules()
+    {
+        (TmLanguageGenerator g, _) = GetTmLanguageGeneratorForGrammar("""
+            lexer grammar ExampleLexer;
+            CMD : '$For' | '$Set' | '$ForEach' | '$SetValue' ;
+            ID : '$'? [a-zA-Z]+ ;
+            WS : [ \t\r\n] -> channel(HIDDEN) ;
+            """);
+        const string input = """
+            $Settlement $Fortress
+            $Set x
+            """;
+        string generatedTextMateGrammar = g.GenerateTextMateLanguageJson();
+        var tokens = TokenizeString(generatedTextMateGrammar, "source.example", input);
+        Assert.Collection(tokens,
+            ExpectedToken("$Settlement", ["variable.id.example"]),
+            ExpectedToken("$Fortress", ["variable.id.example"]),
+            ExpectedToken("$Set", ["keyword.cmd.example"]),
+            ExpectedToken("x", ["variable.id.example"]));
+    }
+
+    [Fact]
+    public void given_rules_with_character_sets_ー_generated_TM_grammar_correctly_tokenizes_identifiers()
     {
         (TmLanguageGenerator g, _) = GetTmLanguageGeneratorForGrammar("""
             lexer grammar ExampleLexer;
@@ -152,7 +295,7 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
     }
 
     [Fact]
-    public void given_ANTLR_combined_grammar_with_implicit_token_literals_ー_generated_TM_grammar_correctly_tokenizes_all_keywords()
+    public void given_implicit_token_literals_ー_generated_TM_grammar_correctly_tokenizes_all_keywords()
     {
         (TmLanguageGenerator g, _) = GetTmLanguageGeneratorForGrammar("""
             grammar ExampleLexer;
@@ -173,7 +316,7 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
     }
 
     [Fact]
-    public void given_ANTLR_grammar_and_customized_TM_scopes_ー_generated_TM_grammar_tokenizes_correctly()
+    public void given_customized_TM_scopes_ー_generated_TM_grammar_tokenizes_correctly()
     {
         (TmLanguageGenerator g, _) = GetTmLanguageGeneratorForGrammar("""
             lexer grammar ExampleLexer;
@@ -200,7 +343,7 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
     }
 
     [Fact]
-    public void given_ANTLR_combined_grammar_and_customized_TM_scopes_including_implicit_tokens_ー_generated_TM_grammar_tokenizes_correctly()
+    public void given_combined_grammar_and_customized_TM_scopes_including_implicit_tokens_ー_generated_TM_grammar_tokenizes_correctly()
     {
         (TmLanguageGenerator g, _) = GetTmLanguageGeneratorForGrammar("""
             grammar ExampleLexer;
@@ -232,7 +375,7 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
     }
 
     [Fact]
-    public void given_ANTLR_lexer_grammar_with_recursive_rules_ー_ignores_them()
+    public void given_recursive_rules_ー_ignores_them()
     {
         // note: here we essentially just check that the generator
         // does not crash due to infinite recursion of MakeRegex calls,

@@ -184,6 +184,37 @@ public partial class TmLanguageGenerator
         };
     }
 
+    private enum Side { Start, End }
+
+    // Determines whether we can use a word boundary anchor
+    // (`\b`) in the pattern for this rule
+    bool CanUseWordBoundaryAnchor(Rule rule, Side side)
+    {
+        HashSet<Rule> visitedRules = [];
+        return startsOrEndsWithLetter(rule.AlternativeList);
+
+        // "letter" includes the underscore
+        bool startsOrEndsWithLetter(SyntaxNode node) => node switch {
+            Rule r => visitedRules.Add(r)
+                ? startsOrEndsWithLetter(r.AlternativeList)
+                : false, // already visited before -> cycle
+            TokenRef r when r.GetRuleOrNull(Grammar) is Rule rule
+                => startsOrEndsWithLetter(rule),
+            AlternativeList altList => altList.Items
+                .All(alt => startsOrEndsWithLetter(alt)),
+            Alternative([var first, ..]) when side is Side.Start
+                => startsOrEndsWithLetter(first),
+            Alternative([.., var last]) when side is Side.End
+                => startsOrEndsWithLetter(last),
+            Literal([char first, ..]) when side is Side.Start
+                => (char.IsLetter(first) || first == '_'),
+            Literal([.., char last]) when side is Side.End
+                => (char.IsLetter(last) || last == '_'),
+            SyntaxElement e when MatchesSingleLetter(e) => true,
+            _ => false
+        };
+    }
+
     bool MatchesSingleLetter(SyntaxElement element)
     {
         return element switch {
@@ -228,9 +259,14 @@ public partial class TmLanguageGenerator
         var alts = rule.AlternativeList.Items.Where(x => x != null);
         var block = alts.Select(a => MakeRegex(a, parentRules.Append(rule)))
             .MakeString($"(?{getGroupOptions()}:", "|", ")");
-        return (standalone && RuleIsKeyword(rule))
-            ? $@"\b{block}\b"
-            : block;
+
+        if (standalone && RuleIsKeyword(rule))
+        {
+            return (CanUseWordBoundaryAnchor(rule, Side.Start) ? @"\b" : "") + block +
+                (CanUseWordBoundaryAnchor(rule, Side.End) ? @"\b" : "");
+        }
+        else
+            return block;
 
         string getGroupOptions()
         {

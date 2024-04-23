@@ -89,10 +89,8 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
     public void given_1_empty_rule_and_namespace_config_ー_generates_prolog_and_using_and_namespace_declaration()
     {
         Configuration config = new() {
-            Ast = new() {
-                Namespace = new("Foo.AST"),
-                AntlrNamespace = new("Foo.Parser")
-            }
+            Ast = new() { Namespace = new("Foo.AST") },
+            Parser = new() { Namespace = new("Foo.Parser") }
         };
         AstCodeGenerator g = GetGeneratorForGrammar($$"""
             {{grammarProlog}}

@@ -14,7 +14,6 @@ public class VscodeExtensionGenerator
     public required string ExtensionDisplayName { get; init; }
     public required HyphenDotIdentifierString ExtensionId { get; init; }
     public required string LanguageClientName { get; init; }
-    public required HyphenDotSlashIdentifierString LspCustomCommandPrefix { get; init; }
     public required string OutputDirectory { get; init; }
     public required bool IncludeAstExplorerView { get; init; }
 
@@ -190,8 +189,8 @@ public class VscodeExtensionGenerator
             {{_ => { if (IncludeAstExplorerView) output.WriteCode($$"""
                 // Create an AST tree view and handle AST change notifications from the server
                 const astProvider = new ASTProvider();
-                client.onNotification('{{LspCustomCommandPrefix}}ast', notification => {
-                    console.log("Received {{LspCustomCommandPrefix}}ast notification: ", notification);
+                client.onNotification('{{LanguageId}}/ast', notification => {
+                    console.log("Received {{LanguageId}}/ast notification: ", notification);
                     astProvider.setRoot(notification.root);
                 });
                 context.subscriptions.push(
@@ -525,7 +524,6 @@ public class VscodeExtensionGenerator
                 ?? [$".{languageId.Value.ToLowerInvariant()}"],
             ExtensionId = config.VscodeExtension.ExtensionId,
             ExtensionDisplayName = config.VscodeExtension.ExtensionDisplayName,
-            LspCustomCommandPrefix = new($"{languageId}/"),
             LanguageClientName = config.VscodeExtension.ExtensionDisplayName,
             CommandCategoryName = config.VscodeExtension.ExtensionDisplayName,
             IncludeAstExplorerView = config.VscodeExtension.IncludeAstExplorerView,

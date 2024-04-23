@@ -308,7 +308,7 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
     {
         return new CSharpModelWriter(output) {
             Namespace = config.Ast.Namespace,
-            AntlrNamespace = config.Ast.AntlrNamespace,
+            AntlrNamespace = config.Parser.Namespace,
         };
     }
 }

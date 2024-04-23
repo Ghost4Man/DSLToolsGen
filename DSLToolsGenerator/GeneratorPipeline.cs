@@ -9,8 +9,9 @@ using DSLToolsGenerator;
 namespace DSLToolsGenerator;
 
 public class GeneratorPipeline(GeneratorPipelineInputs inputs,
-    TmLanguageGeneratorRunner? tmLanguageGeneratorRunner,
     AstCodeGeneratorRunner? astCodeGeneratorRunner,
+    LanguageServerGeneratorRunner? languageServerGeneratorRunner,
+    TmLanguageGeneratorRunner? tmLanguageGeneratorRunner,
     VscodeExtensionGeneratorRunner? vscodeExtensionGeneratorRunner)
 {
     readonly EqualityComparer<IReadOnlyList<IGeneratorRunner>> collectionEqualityComparer =
@@ -74,6 +75,7 @@ public class GeneratorPipeline(GeneratorPipelineInputs inputs,
     IEnumerable<IGeneratorRunner> GetGenerators(OutputSet outputSet)
     {
         if (astCodeGeneratorRunner is null
+            || languageServerGeneratorRunner is null
             || tmLanguageGeneratorRunner is null
             || vscodeExtensionGeneratorRunner is null)
             throw new InvalidOperationException("Missing Generator Runners!");
@@ -84,6 +86,8 @@ public class GeneratorPipeline(GeneratorPipelineInputs inputs,
         {
             if (outputSet.AST)
                 yield return astCodeGeneratorRunner;
+            if (outputSet.LanguageServer)
+                yield return languageServerGeneratorRunner;
             if (outputSet.TmLanguageJson)
                 yield return tmLanguageGeneratorRunner;
             if (outputSet.VscodeExtension)

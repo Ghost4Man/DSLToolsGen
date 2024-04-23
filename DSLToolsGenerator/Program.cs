@@ -16,6 +16,7 @@ using DSLToolsGenerator;
 using DSLToolsGenerator.AST;
 using DSLToolsGenerator.SyntaxHighlighting;
 using DSLToolsGenerator.EditorExtensions;
+using DSLToolsGenerator.LSP;
 
 [assembly: InternalsVisibleTo("DSLToolsGenerator.Tests")]
 
@@ -39,6 +40,14 @@ var generateAstCommand = new Command("ast",
 generateAstCommand.SetHandler(w =>
     InitializePipeline(watchForChanges: w)
         .RunGenerators(new OutputSet { AST = true }),
+    watchOption);
+
+var generateLanguageServerCommand = new Command("languageserver",
+    "generates C# code of a (LSP) language server")
+    { watchOption };
+generateLanguageServerCommand.SetHandler(w =>
+    InitializePipeline(watchForChanges: w)
+        .RunGenerators(new OutputSet { LanguageServer = true }),
     watchOption);
 
 var generateTextMateGrammarCommand = new Command("tmLanguage",
@@ -65,6 +74,7 @@ generateConfigSchemaCommand.SetHandler(GenerateConfigSchema, outputArg);
 var generateCommand = new Command("generate",
     "runs all configured generators") {
         generateAstCommand,
+        generateLanguageServerCommand,
         generateTextMateGrammarCommand,
         generateVscodeExtensionCommand,
         generateConfigSchemaCommand,
@@ -90,6 +100,10 @@ GeneratorPipeline InitializePipeline(bool watchForChanges)
         new AstCodeGeneratorRunner(async (g, c) => {
             if (checkConfigValueIsPresent(c.Ast.OutputPath, out var outputPath))
                 await GenerateAstCodeFromGrammarFile(g, c, new FileInfo(outputPath));
+        }),
+        new LanguageServerGeneratorRunner(async (g, c) => {
+            if (checkConfigValueIsPresent(c.LanguageServer.OutputPath, out var outputPath))
+                await GenerateLanguageServer(g, c, new FileInfo(outputPath));
         }),
         new TmLanguageGeneratorRunner(async (g, c) => {
             if (checkConfigValueIsPresent(c.SyntaxHighlighting.OutputPath, out var outputPath))
@@ -129,6 +143,23 @@ async Task<int> GenerateAstCodeFromGrammarFile(
 
     var modelWriter = CSharpModelWriter.FromConfig(config, writer);
     modelWriter.Visit(model);
+
+    return 0;
+}
+
+async Task<int> GenerateLanguageServer(
+    Grammar grammar, Configuration config, FileInfo? outputFile)
+{
+    FileStream? fileStream = null;
+    if (outputFile != null && !TryOpenWrite(outputFile, out fileStream))
+        return 1;
+
+    await using var writer = CreateOutputWriter(fileStream);
+
+    var generator = LanguageServerGenerator.FromConfig(config, grammar,
+        writer, diagnosticHandler: Console.Error.WriteLine);
+
+    generator.GenerateLanguageServer();
 
     return 0;
 }

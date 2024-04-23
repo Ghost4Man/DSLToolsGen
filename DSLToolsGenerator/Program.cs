@@ -87,21 +87,25 @@ return await rootCommand.InvokeAsync(args);
 GeneratorPipeline InitializePipeline(bool watchForChanges)
 {
     return new(InitializePipelineInputs(watchForChanges),
-        new TmLanguageGeneratorRunner(async (g, c) => {
-            if (c.SyntaxHighlighting.OutputPath is string outputPath && outputPath is not "")
-                await GenerateTextMateGrammar(g, c, new FileInfo(outputPath), verbose: false);
-            else
-                Console.Error.WriteLine("Error: Missing configuration value " +
-                    $"{nameof(Configuration.SyntaxHighlighting)}.{nameof(Configuration.SyntaxHighlighting.OutputPath)}");
-        }),
         new AstCodeGeneratorRunner(async (g, c) => {
-            if (c.Ast.OutputPath is string outputPath && outputPath is not "")
+            if (checkConfigValueIsPresent(c.Ast.OutputPath, out var outputPath))
                 await GenerateAstCodeFromGrammarFile(g, c, new FileInfo(outputPath));
-            else
-                Console.Error.WriteLine("Error: Missing configuration value " +
-                    $"{nameof(Configuration.Ast)}.{nameof(Configuration.Ast.OutputPath)}");
         }),
-        new VscodeExtensionGeneratorRunner(GenerateVscodeExtension));
+        new TmLanguageGeneratorRunner(async (g, c) => {
+            if (checkConfigValueIsPresent(c.SyntaxHighlighting.OutputPath, out var outputPath))
+                await GenerateTextMateGrammar(g, c, new FileInfo(outputPath), verbose: false);
+        }),
+        new VscodeExtensionGeneratorRunner(async (g, c) => {
+            if (checkConfigValueIsPresent(c.VscodeExtension, out _))
+                await GenerateVscodeExtension(g, c);
+        }));
+
+    bool checkConfigValueIsPresent<T>(T value, [NotNullWhen(true)] out T? valueIfPresent,
+        [CallerArgumentExpression(nameof(value))] string configValueName = null!)
+    {
+        return Configuration.CheckValuePresent(value, out valueIfPresent,
+            Console.Error.WriteLine, x => x is not (null or ""), configValueName);
+    }
 }
 
 GeneratorPipelineInputs InitializePipelineInputs(bool watchForChanges)
@@ -127,6 +131,66 @@ async Task<int> GenerateAstCodeFromGrammarFile(
     modelWriter.Visit(model);
 
     return 0;
+}
+
+async Task<int> GenerateTextMateGrammar(
+    Grammar grammar, Configuration config, FileInfo? outputFile, bool verbose)
+{
+    FileStream? fileStream = null;
+    if (outputFile != null && !TryOpenWrite(outputFile, out fileStream))
+        return 1;
+
+    await using var _ = fileStream;
+    Stream outputStream = fileStream ?? Console.OpenStandardOutput();
+
+    var generator = TmLanguageGenerator.FromConfig(config, grammar,
+        diagnosticHandler: Console.Error.WriteLine);
+
+    if (verbose)
+    {
+        const string GREEN = "\u001b[32m";
+        const string YELLOW = "\u001b[33m";
+        const string RESET = "\u001b[0m";
+
+        foreach (Rule rule in grammar.LexerRules)
+        {
+            Console.Error.WriteLine($"rule {rule.Name}:");
+
+            if (!generator.ShouldHighlight(rule))
+                Console.Error.WriteLine("  (skipped)");
+            else
+            {
+                for (int i = 0; i < rule.AlternativeList.Items.Count; i++)
+                {
+                    Alternative? alt = rule.AlternativeList.Items[i];
+                    Console.Error.WriteLine($"  {i}. {GREEN}{alt}{RESET}");
+                    Console.Error.WriteLine($"     regex: {YELLOW}{generator.MakeRegex(alt, [rule])}{RESET}");
+                }
+            }
+            Console.Error.WriteLine();
+        }
+    }
+
+    await generator.GenerateTextMateLanguageJsonAsync(outputStream);
+    return 0;
+}
+
+Task<int> GenerateVscodeExtension(Grammar grammar, Configuration config)
+{
+    var generator = VscodeExtensionGenerator.FromConfig(grammar,
+        diagnosticHandler: Console.Error.WriteLine,
+        config);
+
+    if (generator is null)
+        return Task.FromResult(1); // we assume an error has been reported by FromConfig
+
+    generator.GenerateExtension(file => {
+        if (TryOpenWrite(file, out FileStream? fileStream))
+            return new IndentedTextWriter(CreateOutputWriter(fileStream));
+        return null;
+    });
+
+    return Task.FromResult(0);
 }
 
 bool TryParseGrammarAndReportErrors(IFileInfo grammarFile,
@@ -177,72 +241,6 @@ bool TryParseGrammarAndReportErrors(IFileInfo grammarFile,
     }
 
     return true;
-}
-
-async Task<int> GenerateTextMateGrammar(
-    Grammar grammar, Configuration config, FileInfo? outputFile, bool verbose)
-{
-    FileStream? fileStream = null;
-    if (outputFile != null && !TryOpenWrite(outputFile, out fileStream))
-        return 1;
-
-    await using var _ = fileStream;
-    Stream outputStream = fileStream ?? Console.OpenStandardOutput();
-
-    var generator = TmLanguageGenerator.FromConfig(config, grammar,
-        diagnosticHandler: Console.Error.WriteLine);
-
-    if (verbose)
-    {
-        const string GREEN = "\u001b[32m";
-        const string YELLOW = "\u001b[33m";
-        const string RESET = "\u001b[0m";
-
-        foreach (Rule rule in grammar.LexerRules)
-        {
-            Console.Error.WriteLine($"rule {rule.Name}:");
-
-            if (!generator.ShouldHighlight(rule))
-                Console.Error.WriteLine("  (skipped)");
-            else
-            {
-                for (int i = 0; i < rule.AlternativeList.Items.Count; i++)
-                {
-                    Alternative? alt = rule.AlternativeList.Items[i];
-                    Console.Error.WriteLine($"  {i}. {GREEN}{alt}{RESET}");
-                    Console.Error.WriteLine($"     regex: {YELLOW}{generator.MakeRegex(alt, [rule])}{RESET}");
-                }
-            }
-            Console.Error.WriteLine();
-        }
-    }
-
-    await generator.GenerateTextMateLanguageJsonAsync(outputStream);
-    return 0;
-}
-
-async Task<int> GenerateVscodeExtension(Grammar grammar, Configuration config)
-{
-    if (config.VscodeExtension is null)
-    {
-        Console.Error.WriteLine($"Error: Missing configuration value for {nameof(config.VscodeExtension)}");
-        return 1;
-    }
-
-    var generator = VscodeExtensionGenerator.FromConfig(grammar,
-        diagnosticHandler: Console.Error.WriteLine,
-        config);
-
-    if (generator is null)
-        return 1; // we assume an error has been reported by FromConfig
-
-    generator.GenerateExtension(file => {
-        if (TryOpenWrite(file, out FileStream? fileStream))
-            return new IndentedTextWriter(CreateOutputWriter(fileStream));
-        return null;
-    });
-
-    return 0;
 }
 
 bool TryOpenWrite(FileInfo file, [NotNullWhen(true)] out FileStream? stream,

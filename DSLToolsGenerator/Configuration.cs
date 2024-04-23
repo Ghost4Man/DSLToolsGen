@@ -57,23 +57,27 @@ namespace DSLToolsGenerator
         public HyphenDotIdentifierString GetFallbackLanguageId(Antlr4Ast.Grammar grammar)
             => new(grammar.GetLanguageName(GrammarFile) ?? "untitled");
 
-        public static bool ReportErrorIfNull<T>(
+        public static bool CheckValuePresent<T>(
             [NotNullWhen(true)] T value,
+            [NotNullWhen(true)] out T? valueIfPresent,
             Action<Diagnostic> diagnosticHandler,
+            Func<T, bool>? customPredicate = null,
             [CallerArgumentExpression(nameof(value))] string configValueName = null!)
         {
             ArgumentException.ThrowIfNullOrEmpty(nameof(configValueName));
-            configValueName = configValueName
-                .TrimPrefix("configuration.")
-                .TrimPrefix("config.")
-                .TrimPrefix("c.");
 
-            if (value is null)
+            if (!customPredicate?.Invoke(value) ?? (value is null))
             {
+                configValueName = configValueName
+                    .TrimPrefix("configuration.")
+                    .TrimPrefix("config.")
+                    .TrimPrefix("c.");
                 diagnosticHandler(new(DiagnosticSeverity.Error,
                     $"Missing configuration value for {configValueName}"));
+                valueIfPresent = default;
                 return false;
             }
+            valueIfPresent = value!;
             return true;
         }
     }

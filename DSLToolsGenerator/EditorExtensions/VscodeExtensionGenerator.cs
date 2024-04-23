@@ -512,8 +512,8 @@ public class VscodeExtensionGenerator
     public static VscodeExtensionGenerator? FromConfig(
         Grammar grammar, Action<Diagnostic> diagnosticHandler, Configuration config)
     {
-        if (!Configuration.ReportErrorIfNull(config.VscodeExtension, diagnosticHandler)
-            || !Configuration.ReportErrorIfNull(config.CsprojName, diagnosticHandler))
+        if (!Configuration.CheckValuePresent(config.VscodeExtension, out _, diagnosticHandler)
+            || !Configuration.CheckValuePresent(config.CsprojName, out _, diagnosticHandler))
             return null;
 
         var languageId = config.LanguageId ?? config.GetFallbackLanguageId(grammar);

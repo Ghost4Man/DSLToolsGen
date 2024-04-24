@@ -138,6 +138,7 @@ public class VscodeExtensionGenerator
 
         let client: LanguageClient;
         let devTcpMode: boolean;
+        let shouldAttemptToReconnect = true;
 
         export function activate(context: vscode.ExtensionContext) {
             const config = vscode.workspace.getConfiguration("{{ExtensionId}}");
@@ -208,7 +209,10 @@ public class VscodeExtensionGenerator
 
         async function startClient() {
             try {
-                await client.start();
+                let starting = client.start();
+                vscode.window.setStatusBarMessage(
+                    devTcpMode ? "Connecting..." : "Starting language server...", starting);
+                await starting;
             }
             catch (error) {
                 client.error(`Error while starting FCSS language client: ${error}`, error, false);
@@ -241,9 +245,17 @@ public class VscodeExtensionGenerator
                 socket.on('connect', () => {
                     client.info("Connected.");
                 });
-                socket.on('close', hadError => {
-                    if (hadError)
+                socket.on('close', async hadError => {
+                    if (hadError) {
                         client.warn(`Connection to language server was closed due to an error`, null, true);
+                        if (shouldAttemptToReconnect) {
+                            shouldAttemptToReconnect = false;
+                            await statusBarCountDown(5, "Attempting to reconnect");
+                            await startClient();
+                            await new Promise(resolve => setTimeout(resolve, 5000));
+                            shouldAttemptToReconnect = true;
+                        }
+                    }
                     else
                         client.info(`Connection to language server was closed.`, null, true);
                 });
@@ -258,6 +270,14 @@ public class VscodeExtensionGenerator
                         client.error("Error: TCP connection to language server timed out", null, false);
                 });
                 return Promise.resolve(result);
+            }
+        }
+
+        async function statusBarCountDown(seconds: number, labelPrefix: string) {
+            for (let i = seconds; i > 0; i--) {
+                let timeout = new Promise(resolve => setTimeout(resolve, 1000));
+                vscode.window.setStatusBarMessage(`$(loading~spin) ${labelPrefix} in ${i}s`, timeout);
+                await timeout;
             }
         }
 

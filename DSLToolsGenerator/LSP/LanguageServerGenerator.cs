@@ -13,6 +13,7 @@ public class LanguageServerGenerator
     public required IdentifierString AstNodeBaseClassName { get; init; }
     public required IdentifierString AstRootNodeClassName { get; init; }
     public required IdentifierString ParserClassName { get; init; }
+    public required IdentifierString LexerClassName { get; init; }
     public required HyphenDotIdentifierString LanguageId { get; init; }
 
     protected IndentedTextWriter Output { get; }
@@ -41,6 +42,7 @@ public class LanguageServerGenerator
                 using System.Collections.Concurrent;
                 using System.Collections.Immutable;
                 using System.Reflection;
+                using Microsoft.Extensions.DependencyInjection;
                 using Antlr4.Runtime;
                 using Antlr4.Runtime.Tree;
                 using MediatR;
@@ -52,20 +54,25 @@ public class LanguageServerGenerator
                 using {{LSP}}.Protocol.Document;
                 using {{LSP}}.Protocol.Serialization;
                 using {{LSP}}.Protocol.Client.Capabilities;
+                using {{LSP}}.Protocol.Server.Capabilities;
                 using {{LSP}}.Server;
                 using AstNode = global::{{AstNamespace?.Value.Append(".")}}{{AstNodeBaseClassName}};
                 using {{ParserClassName}} = global::{{AntlrNamespace?.Value.Append(".")}}{{ParserClassName}};
+                using {{LexerClassName}} = global::{{AntlrNamespace?.Value.Append(".")}}{{LexerClassName}};
 
-                partial class {{LanguageServerClassName}}
+                partial class {{LanguageServerClassName}} : {{LanguageServerClassName}}Base
                 {
-                    public const string LanguageId = "{{LanguageId}}";
                 }
+
+                {{_ => GenerateLanguageServerBaseClass()}}
 
                 {{_ => GenerateLspConnectionInfoClass()}}
 
                 {{_ => GenerateDocumentManagerClass()}}
 
-                {{_ => GenerateRequestHandlers()}}
+                {{_ => GenerateHoverHandler()}}
+
+                {{_ => GenerateTextDocumentSyncHandler()}}
 
                 {{_ => GenerateHelperClasses()}}
 
@@ -79,6 +86,68 @@ public class LanguageServerGenerator
             }
             """);
     }
+
+    public void GenerateLanguageServerBaseClass() => Output.WriteCode($$"""
+        public abstract class {{LanguageServerClassName}}Base
+        {
+            public const string LanguageId = "{{LanguageId}}";
+
+            public virtual async Task HandleDocumentUpdate(DocumentManager documents,
+                TextDocumentIdentifier documentId, string documentText,
+                ILanguageServerFacade server)
+            {
+                List<Diagnostic> diagnostics = [];
+                var parser = CreateParser(documentText,
+                    lexErr => diagnostics.Add(lexErr.ToLspDiagnostic()),
+                    synErr => diagnostics.Add(synErr.ToLspDiagnostic()));
+
+                var document = await AnalyzeDocument(documentId, documentText, parser, diagnostics);
+
+                // publish all collected diagnostics
+                server.TextDocument.PublishDiagnostics(documentId, diagnostics);
+
+                // send the AST data
+                server.SendNotification(new PublishASTParams {
+                    Uri = documentId.Uri,
+                    Version = documentId.GetVersion(),
+                    Root = AstNodeInfo.From(document?.Ast)
+                });
+
+                Console.Error.WriteLine($"Analyzed the document and pushed {diagnostics.Count} diagnostics.");
+
+                if (document is not null)
+                {
+                    documents.AddOrUpdate(documentId.Uri, document);
+                }
+            }
+
+            /// <summary>
+            /// Parse the given document with the given parser
+            /// (lexer and syntax errors are collected automatically)
+            /// and analyze its semantics.
+            /// </summary>
+            /// <param name="parser">A parser (created by <see cref="CreateParser"/>)
+            ///     which can be used to analyze the syntax of the given document.</param>
+            /// <param name="diagnostics">A (mutable) collection of diagnostics (errors, warnings).</param>
+            protected abstract Task<Document> AnalyzeDocument(
+                TextDocumentIdentifier documentId, string documentText, FCSSParser parser,
+                IList<Diagnostic> diagnostics);
+
+            protected virtual {{ParserClassName}} CreateParser(string documentText,
+                Action<SyntaxErrorInfo<int>> lexicalErrorHandler,
+                Action<SyntaxErrorInfo<IToken>> syntaxErrorHandler)
+            {
+                // parse the document using the ANTLR-generated lexer and parser
+                var stream = CharStreams.fromString(documentText);
+                var lexer = new {{LexerClassName}}(stream);
+                var tokenStream = new CommonTokenStream(lexer);
+                var parser = new {{ParserClassName}}(tokenStream);
+                lexer.AddErrorListener(new DelegateErrorListener<int>(lexicalErrorHandler));
+                parser.AddErrorListener(new DelegateErrorListener<IToken>(syntaxErrorHandler));
+                return parser;
+            }
+        }
+        """);
 
     public void GenerateLspConnectionInfoClass() => Output.WriteCode($$"""
         public abstract partial record LspConnectionInfo
@@ -115,13 +184,13 @@ public class LanguageServerGenerator
         {
             protected ConcurrentDictionary<DocumentUri, Document> Documents { get; } = new();
 
-            public void Remove(DocumentUri uri) => Documents.Remove(uri, out _);
-            public void AddOrUpdate(DocumentUri uri, Document document) => Documents[uri] = document;
-            public Document? Get(DocumentUri uri) => Documents.GetValueOrDefault(uri);
+            public virtual Document? Get(DocumentUri uri) => Documents.GetValueOrDefault(uri);
+            public virtual void Remove(DocumentUri uri) => Documents.Remove(uri, out _);
+            public virtual void AddOrUpdate(DocumentUri uri, Document document) => Documents[uri] = document;
         }
         """);
 
-    public void GenerateRequestHandlers() => Output.WriteCode($$""""
+    public void GenerateHoverHandler() => Output.WriteCode($$""""
         public class HoverHandler(DocumentManager documents) : HoverHandlerBase
         {
             public override async Task<Hover?> Handle(HoverParams request, CancellationToken cancellationToken)
@@ -148,6 +217,55 @@ public class LanguageServerGenerator
                 HoverCapability capability, ClientCapabilities clientCapabilities) => new();
         }
         """");
+
+    public void GenerateTextDocumentSyncHandler() => Output.WriteCode($$"""
+        public delegate Task TextDocumentUpdateHandler(DocumentManager documents,
+            TextDocumentIdentifier documentId, string documentText, ILanguageServerFacade server);
+
+        public class TextDocumentSyncHandler(DocumentManager documents, ILanguageServerFacade server,
+            TextDocumentUpdateHandler handler) : TextDocumentSyncHandlerBase
+        {
+            public override TextDocumentAttributes GetTextDocumentAttributes(DocumentUri uri)
+                => new(uri, languageId: {{LanguageServerClassName}}.LanguageId);
+
+            public override async Task<Unit> Handle(DidOpenTextDocumentParams e, CancellationToken cancellationToken)
+            {
+                await Console.Error.WriteLineAsync($"Opened {e.TextDocument.Uri}");
+                await handler(documents, e.TextDocument, e.TextDocument.Text, server);
+                return Unit.Value;
+            }
+
+            public override async Task<Unit> Handle(DidChangeTextDocumentParams e, CancellationToken cancellationToken)
+            {
+                await Console.Error.WriteLineAsync($"Changed {e.TextDocument.Uri} (version {e.TextDocument.Version})");
+                await handler(documents, e.TextDocument, e.ContentChanges.Last().Text, server);
+                return Unit.Value;
+            }
+
+            public override async Task<Unit> Handle(DidSaveTextDocumentParams e, CancellationToken cancellationToken)
+            {
+                await Console.Error.WriteLineAsync($"Saved {e.TextDocument.Uri}");
+                if (e.Text is string documentText)
+                {
+                    await handler(documents, e.TextDocument, documentText, server);
+                }
+                return Unit.Value;
+            }
+
+            public override async Task<Unit> Handle(DidCloseTextDocumentParams e, CancellationToken cancellationToken)
+            {
+                await Console.Error.WriteLineAsync($"Closed {e.TextDocument.Uri}");
+                documents.Remove(e.TextDocument.Uri);
+                return Unit.Value;
+            }
+
+            protected override TextDocumentSyncRegistrationOptions CreateRegistrationOptions(TextSynchronizationCapability capability, ClientCapabilities clientCapabilities)
+                => new TextDocumentSyncRegistrationOptions() {
+                    Change = TextDocumentSyncKind.Full,
+                    Save = new SaveOptions { IncludeText = true },
+                };
+        }
+        """);
 
     public void GenerateHelperClasses() => Output.WriteCode($$"""
         public record struct SyntaxErrorInfo<TSymbol>(
@@ -232,6 +350,14 @@ public class LanguageServerGenerator
                 }
             }
 
+            public static LanguageServerOptions WithTextDocumentSyncHandler(
+                this LanguageServerOptions options, TextDocumentUpdateHandler handler)
+            {
+                return options.AddHandler(s => new TextDocumentSyncHandler(
+                    s.GetRequiredService<DocumentManager>(), 
+                    s.GetRequiredService<ILanguageServerFacade>(), handler));
+            }
+
             public static StringOrMarkupContent AppendParagraph(this StringOrMarkupContent self, string markdown)
             {
                 if (markdown is null or "")
@@ -253,9 +379,9 @@ public class LanguageServerGenerator
                 => (documentId as VersionedTextDocumentIdentifier)?.Version
                     ?? (documentId as OptionalVersionedTextDocumentIdentifier)?.Version;
 
-            public static void PublishDiagnostics(this ILanguageServer mediator,
+            public static void PublishDiagnostics(this ITextDocumentLanguageServer server,
                     TextDocumentIdentifier documentId, IEnumerable<Diagnostic> diagnostics)
-                => mediator.PublishDiagnostics(new() {
+                => server.PublishDiagnostics(new() {
                     Uri = documentId.Uri,
                     Version = documentId.GetVersion(),
                     Diagnostics = new(diagnostics)
@@ -322,7 +448,7 @@ public class LanguageServerGenerator
         """);
 
     public void GenerateDocumentClass() => Output.WriteCode($$"""
-        public record Document(string Text, {{AstRootNodeClassName}} Ast, {{ParserClassName}} Parser)
+        public partial record Document(string Text, {{AstRootNodeClassName}} Ast, {{ParserClassName}} Parser)
         {
             /// <summary>
             /// AST nodes grouped by line index (0..n).
@@ -355,14 +481,15 @@ public class LanguageServerGenerator
                 .Where(l => startLine <= l.Key && l.Key <= endLine)
                 .SelectMany(l => l);
 
-            public IToken FindTokenAt(Position position, bool preferLeftTokenAtBoundary = false)
+            public IToken? FindTokenAt(Position position, bool preferLeftTokenAtBoundary = false)
             {
                 var tokens = (BufferedTokenStream)Parser.TokenStream;
                 // assuming that there are no holes
                 Func<IToken, bool> predicate = preferLeftTokenAtBoundary
                     ? (t => t.GetEndPosition() >= position)
                     : (t => t.GetEndPosition() > position);
-                return tokens.GetTokens().First(predicate);
+                IList<IToken> tokenList = tokens.GetTokens();
+                return tokenList.FirstOrDefault(predicate);
             }
         }
         """);
@@ -392,7 +519,7 @@ public class LanguageServerGenerator
         {
             public IReadOnlyList<Property> Properties { get; init; } = [];
 
-            public static AstNodeInfo From(AstNode node, string? propertyName = null)
+            public static AstNodeInfo From(AstNode? node, string? propertyName = null)
             {
                 if (node is null)
                     return new AstNodeInfo("null", propertyName);
@@ -425,11 +552,12 @@ public class LanguageServerGenerator
         return new LanguageServerGenerator(output) {
             Grammar = grammar,
             DiagnosticHandler = diagnosticHandler,
-            LanguageId = languageId,
+            LanguageId = languageId.Transform(s => s.ToLowerInvariant()),
             LanguageServerClassName = languageServerClassName,
             Namespace = config.LanguageServer.Namespace,
             AntlrNamespace = config.Parser.Namespace,
             ParserClassName = new(grammar.GetParserClassName()),
+            LexerClassName = new(grammar.GetParserClassName().TrimSuffix("Parser") + "Lexer"),
             AstNamespace = config.Ast.Namespace,
             AstNodeBaseClassName = new("AstNode"),
             AstRootNodeClassName = config.Ast.RootNodeClass ?? new("AstNode"),

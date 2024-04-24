@@ -69,6 +69,7 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
         Output.WriteCode($$"""
             #nullable enable
             using System;
+            using System.Linq;
             using System.Collections.Generic;
             {{(AntlrNamespace?.Value is string antlrNS ? $"using {antlrNS};" : null)}}
 

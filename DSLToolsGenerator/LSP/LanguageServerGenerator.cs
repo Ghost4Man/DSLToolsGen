@@ -27,9 +27,16 @@ public class LanguageServerGenerator
         Output.WriteCode($$"""
             #nullable enable
 
+            using System;
+            using System.Linq;
+            using System.Collections.Generic;
+            using System.Threading.Tasks;
+
             namespace {{Namespace ?? "LanguageServer"}}
             {
-                using Type = System.Type;
+                using Stream = System.IO.Stream;
+                using TextWriter = System.IO.TextWriter;
+                using System.Threading;
                 using System.Collections.Concurrent;
                 using System.Collections.Immutable;
                 using System.Reflection;
@@ -43,8 +50,8 @@ public class LanguageServerGenerator
                 using {{LSP}}.Protocol.Server;
                 using {{LSP}}.Protocol.Document;
                 using {{LSP}}.Protocol.Serialization;
-                using AstNode = {{AstNamespace?.Value.Append(".")}}{{AstNodeBaseClassName}};
-                using {{ParserClassName}} = {{AntlrNamespace?.Value.Append(".")}}{{ParserClassName}};
+                using AstNode = global::{{AstNamespace?.Value.Append(".")}}{{AstNodeBaseClassName}};
+                using {{ParserClassName}} = global::{{AntlrNamespace?.Value.Append(".")}}{{ParserClassName}};
 
                 partial class {{LanguageServerClassName}}
                 {

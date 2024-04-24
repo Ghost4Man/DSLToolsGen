@@ -36,6 +36,7 @@ public class LanguageServerGenerator
             {
                 using Stream = System.IO.Stream;
                 using TextWriter = System.IO.TextWriter;
+                using Path = System.IO.Path;
                 using System.Threading;
                 using System.Collections.Concurrent;
                 using System.Collections.Immutable;
@@ -50,6 +51,8 @@ public class LanguageServerGenerator
                 using {{LSP}}.Protocol.Server;
                 using {{LSP}}.Protocol.Document;
                 using {{LSP}}.Protocol.Serialization;
+                using {{LSP}}.Protocol.Client.Capabilities;
+                using {{LSP}}.Server;
                 using AstNode = global::{{AstNamespace?.Value.Append(".")}}{{AstNodeBaseClassName}};
                 using {{ParserClassName}} = global::{{AntlrNamespace?.Value.Append(".")}}{{ParserClassName}};
 
@@ -61,6 +64,8 @@ public class LanguageServerGenerator
                 {{_ => GenerateLspConnectionInfoClass()}}
 
                 {{_ => GenerateDocumentManagerClass()}}
+
+                {{_ => GenerateRequestHandlers()}}
 
                 {{_ => GenerateHelperClasses()}}
 
@@ -116,6 +121,34 @@ public class LanguageServerGenerator
         }
         """);
 
+    public void GenerateRequestHandlers() => Output.WriteCode($$""""
+        public class HoverHandler(DocumentManager documents) : HoverHandlerBase
+        {
+            public override async Task<Hover?> Handle(HoverParams request, CancellationToken cancellationToken)
+            {
+                var doc = documents.Get(request.TextDocument.Uri);
+                if (doc is null)
+                {
+                    Console.Error.WriteLine($"received request for unknown document: {request.TextDocument.Uri}");
+                    return null;
+                }
+
+                return await Task.Run(() => new Hover {
+                    Contents = new(new MarkedString($"""
+                        Position: `{request.Position}`
+
+                        Token: `{doc.FindTokenAt(request.Position)}`
+
+                        AST node: `{doc.FindDeepestNodeAt(request.Position).GetType().Name}`
+                        """)),
+                });
+            }
+
+            protected override HoverRegistrationOptions CreateRegistrationOptions(
+                HoverCapability capability, ClientCapabilities clientCapabilities) => new();
+        }
+        """");
+
     public void GenerateHelperClasses() => Output.WriteCode($$"""
         public record struct SyntaxErrorInfo<TSymbol>(
             IRecognizer Recognizer, TSymbol? OffendingSymbol,
@@ -124,6 +157,13 @@ public class LanguageServerGenerator
             public readonly Range GetRange() => new(
                 LineNumber - 1, CharPositionInLine,
                 LineNumber - 1, CharPositionInLine + (OffendingSymbol as IToken)?.Text?.Length ?? 1);
+
+            public readonly Diagnostic ToLspDiagnostic(string? details = null) => new() {
+                Severity = DiagnosticSeverity.Error,
+                Range = GetRange(),
+                Code = $"{Path.GetFileNameWithoutExtension(Recognizer.GrammarFileName)}_Error",
+                Message = (Message + "\n" + details).TrimEnd(),
+            };
         }
 
         public class DelegateErrorListener<TSymbol>(Action<SyntaxErrorInfo<TSymbol>> Handler)
@@ -163,6 +203,35 @@ public class LanguageServerGenerator
 
         public static class LspExtensions
         {
+            public static LanguageServerOptions WithConnection(this LanguageServerOptions options,
+                LspConnectionInfo connection, TextWriter? logOutput = null)
+            {
+                logOutput ??= Console.Error;
+            
+                switch (connection)
+                {
+                    case LspConnectionInfo.TcpServer(int port):
+                    {
+                        var listener = new System.Net.Sockets.TcpListener(
+                            System.Net.IPAddress.Loopback, port);
+                        listener.Start();
+                        logOutput.WriteLine($"Waiting for LSP client to connect to port {port}...");
+                        var client = listener.AcceptTcpClient();
+                        listener.Stop();
+                        options.RegisterForDisposal(client);
+                        Stream stream = client.GetStream();
+                        logOutput.WriteLine($"LSP client connected.");
+                        return options.WithInput(stream).WithOutput(stream);
+                    }
+                    case LspConnectionInfo.StdIO:
+                        return options
+                            .WithInput(Console.OpenStandardInput())
+                            .WithOutput(Console.OpenStandardOutput());
+                    default:
+                        throw new NotImplementedException($"unknown connection type {connection.GetType().Name}");
+                }
+            }
+
             public static StringOrMarkupContent AppendParagraph(this StringOrMarkupContent self, string markdown)
             {
                 if (markdown is null or "")

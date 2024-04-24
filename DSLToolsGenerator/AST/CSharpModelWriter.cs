@@ -80,6 +80,15 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
                 public Antlr4.Runtime.ParserRuleContext? ParserContext { get; init; }
                 public abstract bool IsMissing { get; }
                 public abstract IEnumerable<AstNode?> GetChildNodes();
+
+                public IEnumerable<AstNode> GetAllDescendantNodes()
+                    => GetChildNodes().SelectMany(GetNonNullDescendantNodesAndSelf);
+
+                public IEnumerable<AstNode> GetAllDescendantNodesAndSelf()
+                    => GetChildNodes().SelectMany(GetNonNullDescendantNodesAndSelf).Prepend(this);
+
+                static IEnumerable<AstNode> GetNonNullDescendantNodesAndSelf(AstNode? node)
+                    => node?.GetChildNodes().SelectMany(GetNonNullDescendantNodesAndSelf).Prepend(node) ?? [];
             }
 
             {{_ => VisitAll(astModel.NodeClasses, "")}}

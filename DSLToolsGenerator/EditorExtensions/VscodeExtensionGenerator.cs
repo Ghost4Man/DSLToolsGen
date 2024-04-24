@@ -137,6 +137,7 @@ public class VscodeExtensionGenerator
         {{(IncludeAstExplorerView ? "import { ASTProvider } from './ASTProvider';" : "")}}
 
         let client: LanguageClient;
+        let devTcpMode: boolean;
 
         export function activate(context: vscode.ExtensionContext) {
             const config = vscode.workspace.getConfiguration("{{ExtensionId}}");
@@ -168,11 +169,11 @@ public class VscodeExtensionGenerator
             };
 
             // In debug mode, try to connect over TCP first (to make debugging the language server from Visual Studio easier)
-            const languageServerTcpPort = Number(process.env.LSP_SERVER_DEV_TCP_PORT);
-            const serverOptions: ServerOptions =
-                (context.extensionMode == vscode.ExtensionMode.Development && languageServerTcpPort)
-                    ? getDebugServerOptions(languageServerTcpPort)
-                    : defaultServerOptions;
+            const languageServerTcpPort = Number(process.env.LSP_SERVER_DEV_TCP_PORT);    
+            devTcpMode = context.extensionMode === vscode.ExtensionMode.Development && !!languageServerTcpPort;
+            const serverOptions: ServerOptions = devTcpMode
+                ? getDebugServerOptions(languageServerTcpPort)
+                : defaultServerOptions;
 
             // Options to control the language client
             const clientOptions: LanguageClientOptions = {
@@ -180,7 +181,7 @@ public class VscodeExtensionGenerator
                 synchronize: {
                     // Notify the server about file changes to '.xyz' files contained in the workspace
                     //fileEvents: workspace.createFileSystemWatcher('**/.xyz')
-                }
+                },
             };
 
             // Create the language client and start the client.
@@ -198,10 +199,30 @@ public class VscodeExtensionGenerator
                 """); }}}
 
             // Start the client. This will also launch the server
-            client.start();
+            startClient();
 
             context.subscriptions.push(
-                vscode.commands.registerCommand('{{ExtensionId}}.restartLanguageServer', () => { client.restart(); }));
+                vscode.commands.registerCommand('{{ExtensionId}}.restartLanguageServer',
+                () => { restartClient(); }));
+        }
+
+        async function startClient() {
+            try {
+                await client.start();
+            }
+            catch (error) {
+                client.error(`Error while starting FCSS language client: ${error}`, error, false);
+                showConnectionErrorAndOfferRestart(devTcpMode
+                    ? `${error}. Is the language server running in dev (TCP server) mode?`
+                    : `${error}`);
+            }
+        }
+
+        async function restartClient() {
+            await client.stop()
+                .catch(_ => { }); // ignore "Client is not running and can't be stopped." error
+            await new Promise(resolve => setTimeout(resolve, 1000)); // delay to let server restart
+            await startClient();
         }
 
         export function deactivate(): Thenable<void> | undefined {
@@ -217,8 +238,14 @@ public class VscodeExtensionGenerator
 
                 let socket = net.connect({ port: languageServerTcpPort, timeout: 5000 });
                 let result: StreamInfo = { writer: socket, reader: socket, detached: true };
+                socket.on('connect', () => {
+                    client.info("Connected.");
+                });
                 socket.on('close', hadError => {
-                    client.warn(`Socket to language server was closed; hadError=${hadError}`, null, true);
+                    if (hadError)
+                        client.warn(`Connection to language server was closed due to an error`, null, true);
+                    else
+                        client.info(`Connection to language server was closed.`, null, true);
                 });
                 socket.on('error', err => {
                     if (socket.connecting)
@@ -227,14 +254,21 @@ public class VscodeExtensionGenerator
                         client.error(`Error: TCP connection error: ${err.message}`, err, false);
                 });
                 socket.on('timeout', async () => {
-                    if (!socket.connecting)
-                        return;
-
-                    // this message should only ever appear when debugging this extension
-                    let action = await vscode.window.showErrorMessage(
-                        `Timeout while connecting to language server over TCP`);
+                    if (socket.connecting)
+                        client.error("Error: TCP connection to language server timed out", null, false);
                 });
                 return Promise.resolve(result);
+            }
+        }
+
+        // This should only ever appear when debugging this extension
+        // (and thus connecting to language server over TCP)
+        async function showConnectionErrorAndOfferRestart(message?: string) {
+            let action = await vscode.window.showErrorMessage(
+                "Error while connecting to language server" + (message ? `: ${message}` : "."),
+                'Retry');
+            if (action === 'Retry') {
+                restartClient();
             }
         }
         """);

@@ -18,6 +18,9 @@ public partial class TmLanguageGenerator
     public required IReadOnlyList<RuleConflict> RuleConflicts { get; init; }
     public required IReadOnlyDictionary<string, RuleOptions>? RuleSettings { get; init; }
 
+    Dictionary<Rule, bool> ruleIsKeywordCache = new();
+    Dictionary<Rule, bool> ruleIsAllowedInKeywordCache = new();
+
     readonly JsonSerializerOptions jsonOptions = new() {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -40,9 +43,6 @@ public partial class TmLanguageGenerator
 
         var rulesToHighlight = implicitTokenRules
             .Concat(Grammar.LexerRules.Where(ShouldHighlight));
-
-        // TODO: reorder and/or transform the rules to fix the mismatch between
-        //       ANTLR's longest-match and TextMate's leftmost-match behavior
 
         List<Pattern> patterns = [];
 
@@ -74,10 +74,22 @@ public partial class TmLanguageGenerator
                 => $@"(?=(?<{groupName}>{MakeRegex(rule, parentRules: [])})(?<rest{groupName}>.*)$)";
         }
 
-        patterns.AddRange(rulesToHighlight.Select(r => new Pattern(
-            Comment: $"rule {r.Name}",
-            Match: MakeRegex(r, parentRules: []),
-            Name: getFullScopeNameForRule(r))));
+        // try to reorder the rules to fix the mismatch between
+        // ANTLR's longest-match and TextMate's leftmost/eager match behavior
+        patterns.AddRange(rulesToHighlight
+            .Select(r => (
+                pattern: new Pattern(
+                    Comment: $"rule {r.Name}",
+                    Match: MakeRegex(r, parentRules: []),
+                    Name: getFullScopeNameForRule(r)),
+                priority: GetRulePriority(r)
+            ))
+            .OrderByDescending(p => p.priority)
+            .ThenByDescending(p => p.pattern.Match?.Length)
+            .Select(p => p.pattern));
+
+        ruleIsAllowedInKeywordCache.Clear();
+        ruleIsKeywordCache.Clear();
 
         return new TmLanguageDocument(
             Name: LanguageDisplayName,
@@ -87,6 +99,19 @@ public partial class TmLanguageGenerator
 
         string getFullScopeNameForRule(Rule r)
             => $"{GetScopeNameForRule(r)}.{lowercaseLanguageId}";
+    }
+
+    // priority heuristic: the higher the number, the sooner this rule will
+    // try to match the input (when tokenizing using a TextMate-like engine)
+    int GetRulePriority(Rule rule)
+    {
+        // try all keyword rules first (we assume they can't match more
+        // than they are supposed to, since they have word boundary anchors)
+        if (RuleIsKeyword(rule))
+            return int.MaxValue;
+
+        // more complex rules have higher priority
+        return rule.GetAllDescendants().Count();
     }
 
     Rule? FindRuleOrError(string ruleName)
@@ -139,9 +164,6 @@ public partial class TmLanguageGenerator
 
     internal bool RuleIsKeyword(Rule rule)
     {
-        // Cache the results to prevent stack overflow on recursive rules
-        Dictionary<Rule, bool> ruleIsKeywordCache = new();
-        Dictionary<Rule, bool> ruleIsAllowedInKeywordCache = new();
         return ruleIsKeyword(rule);
 
         // Consider a rule to represent (match) a keyword iff
@@ -256,9 +278,8 @@ public partial class TmLanguageGenerator
 
         Rule? parentRule = parentRules.LastOrDefault();
         bool standalone = parentRule is null;
-        var alts = rule.AlternativeList.Items.Where(x => x != null);
-        var block = alts.Select(a => MakeRegex(a, parentRules.Append(rule)))
-            .MakeString($"(?{getGroupOptions()}:", "|", ")");
+        string altRegex = RegexForAltList(rule.AlternativeList, parentRules.Append(rule));
+        var block = $"(?{getGroupOptions()}:{altRegex})";
 
         if (standalone && RuleIsKeyword(rule))
         {
@@ -286,7 +307,7 @@ public partial class TmLanguageGenerator
     {
         string regex = node switch {
             Alternative a => a.Elements.Select(c => MakeRegex(c, parentRules)).MakeString(),
-            Block b => $"(?:{b.Items.Select(c => MakeRegex(c, parentRules)).MakeString("|")})",
+            Block b => $"(?:{RegexForAltList(b, parentRules)})",
             LexerBlock b => // called SetAST in the ANTLR java tool
                 CombineSets( // ANTLR only supports single-character literals and character sets
                     b.Items.Select(body => body switch {
@@ -317,6 +338,14 @@ public partial class TmLanguageGenerator
         }
         else
             return regex;
+    }
+
+    string RegexForAltList(AlternativeList altList, IEnumerable<Rule> parentRules)
+    {
+        return altList.Items.WhereNotNull()
+            .Select(a => MakeRegex(a, parentRules))
+            .OrderByDescending(a => a.Length)
+            .MakeString("|");
     }
 
     string RegexWarningComment(string text, bool emitWarning = true, bool forceFail = false)

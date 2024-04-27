@@ -19,7 +19,8 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
     [InlineData(@"'a' 'bb' '!'+ 'c'", @"abb!+c")]
     [InlineData(@"'a' 'bb'? 'c'", @"a(?:bb)?c")]
     [InlineData(@"('a' | 'b')+", @"(?:a|b)+")]
-    [InlineData(@"('a' | 'b' | ('c' | [xyz]))", @"(?:a|b|(?:c|[xyz]))")]
+    [InlineData(@"('a' | 'b' | ('c' | [xyz]))", @"(?:(?:[xyz]|c)|a|b)")]
+    [InlineData(@"('Get' | ('GetFirstKey' | 'GetFirst'))", @"(?:(?:GetFirstKey|GetFirst)|Get)")]
     [InlineData(@"('{' 'a' '}')+", @"(?:\{a\})+")]
     [InlineData(@".*", @".*")]
     [InlineData(@".+?", @".+?")]
@@ -393,6 +394,48 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
         Assert.Collection(tokens,
             ExpectedToken("abc", ["variable.id.example"]),
             ExpectedToken("// comment here", ["comment.line.comment.example"]));
+    }
+
+    [Fact]
+    public void given_grammar_where_naive_approach_would_not_work_ー_tokenizes_like_ANTLR()
+    {
+        (TmLanguageGenerator g, _) = GetTmLanguageGeneratorForGrammar("""
+            lexer grammar ExampleLexer;
+            ID : [a-zA-Z]+ ;
+            DIV : '/' ;
+            AND : '/\\' ;
+            SET_CMD : '/set' ;
+            INT : [0-9]+ ;
+            FLOAT : [0-9]+ '.' [0-9]+ ;
+            ACCESS : ('read.' | 'read.write.' | 'read.only.') ;
+            COMMENT: '//' ~[\r\n]* -> skip ;
+            """);
+        // a naive translation (without e.g. reordering) into a TextMate grammar would lead to
+        // incorrect matches: [`/` (DIV), `div` (skipped), `read.` (ACCESS), `write.` (skipped),
+        //                     `x` (ID), `21` (INT), `.` (skipped), `0` (INT)]
+        // instead of         [`/set` (SET_CMD), `read.write.` (ACCESS), `x` (ID), `21.0` (FLOAT)]
+        const string input = """
+            abc // comment here
+            /set read.write. x  21.0
+            /set read.only.  y  42 / x
+            /\
+            """;
+        string generatedTextMateGrammar = g.GenerateTextMateLanguageJson();
+        var tokens = TokenizeString(generatedTextMateGrammar, "source.example", input);
+        Assert.Collection(tokens,
+            ExpectedToken("abc", ["variable.id.example"]),
+            ExpectedToken("// comment here", ["comment.line.comment.example"]),
+            ExpectedToken("/set", ["keyword.set_cmd.example"]),
+            ExpectedToken("read.write.", ["keyword.access.example"]),
+            ExpectedToken("x", ["variable.id.example"]),
+            ExpectedToken("21.0", ["constant.numeric.float.example"]),
+            ExpectedToken("/set", ["keyword.set_cmd.example"]),
+            ExpectedToken("read.only.", ["keyword.access.example"]),
+            ExpectedToken("y", ["variable.id.example"]),
+            ExpectedToken("42", ["constant.numeric.int.example"]),
+            ExpectedToken("/", ["other.div.example"]),
+            ExpectedToken("x", ["variable.id.example"]),
+            ExpectedToken(@"/\", ["other.and.example"]));
     }
 
     Action<(string text, IReadOnlyList<string> scopes)> ExpectedToken(string text, string[] scopes) => token => {

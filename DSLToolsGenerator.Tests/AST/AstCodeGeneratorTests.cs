@@ -7,6 +7,7 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
     const string expectedProlog = """
         #nullable enable
         using System;
+        using System.Linq;
         using System.Collections.Generic;
         """;
 
@@ -16,6 +17,15 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             public Antlr4.Runtime.ParserRuleContext? ParserContext { get; init; }
             public abstract bool IsMissing { get; }
             public abstract IEnumerable<AstNode?> GetChildNodes();
+        
+            public IEnumerable<AstNode> GetAllDescendantNodes()
+                => GetChildNodes().SelectMany(GetNonNullDescendantNodesAndSelf);
+        
+            public IEnumerable<AstNode> GetAllDescendantNodesAndSelf()
+                => GetChildNodes().SelectMany(GetNonNullDescendantNodesAndSelf).Prepend(this);
+        
+            static IEnumerable<AstNode> GetNonNullDescendantNodesAndSelf(AstNode? node)
+                => node?.GetChildNodes().SelectMany(GetNonNullDescendantNodesAndSelf).Prepend(node) ?? [];
         }
         """;
 

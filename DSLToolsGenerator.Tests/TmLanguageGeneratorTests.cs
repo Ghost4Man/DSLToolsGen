@@ -378,6 +378,43 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
     }
 
     [Fact]
+    public void given_RuleConflicts_setting_ー_generated_TM_grammar_correctly_picks_the_longer_match()
+    {
+        (TmLanguageGenerator g, _) = GetTmLanguageGeneratorForGrammar("""
+            grammar ExampleLexer;
+            HThree : '#' [0-9] [0-9] [0-9] ;
+            HNums : '#' [0-9]+ ;
+            FLOAT : NUM '.' NUM ;
+            VERSION : NUM | NUM '.' NUM '.' NUM ;
+            fragment NUM : [0-9]+ ;
+            WS : [ \t\r\n] -> channel(HIDDEN) ;
+            """,
+            config: new() {
+                SyntaxHighlighting = new() {
+                    RuleConflicts = [
+                        new(["HThree", "HNums"]),
+                        new(["FLOAT", "VERSION"]),
+                    ]
+                }
+            });
+        const string input = """
+            #01  #012  #0123  #01234
+            1.2.3  1.2  1  2.3
+            """;
+        string generatedTextMateGrammar = g.GenerateTextMateLanguageJson();
+        var tokens = TokenizeString(generatedTextMateGrammar, "source.example", input);
+        Assert.Collection(tokens,
+            ExpectedToken("#01", ["other.hnums.example"]),
+            ExpectedToken("#012", ["other.hthree.example"]),
+            ExpectedToken("#0123", ["other.hnums.example"]),
+            ExpectedToken("#01234", ["other.hnums.example"]),
+            ExpectedToken("1.2.3", ["other.version.example"]),
+            ExpectedToken("1.2", ["constant.numeric.float.example"]),
+            ExpectedToken("1", ["other.version.example"]),
+            ExpectedToken("2.3", ["constant.numeric.float.example"]));
+    }
+
+    [Fact]
     public void given_recursive_rules_ー_ignores_them()
     {
         // note: here we essentially just check that the generator

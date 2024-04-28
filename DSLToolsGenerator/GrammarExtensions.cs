@@ -390,7 +390,8 @@ static class SyntaxElementExtensions
     public static void Deconstruct(this Alternative alt, out IReadOnlyList<SyntaxElement> elements) => elements = alt.Elements;
     public static void Deconstruct(this TokenRef tokenRef, out string name) => name = tokenRef.Name;
     public static void Deconstruct(this RuleRef ruleRef, out string name) => name = ruleRef.Name;
-    public static void Deconstruct(this Literal literal, out string value) => value = literal.GetValue();
+    public static void Deconstruct(this Literal literal, out string value) => value = literal.GetUnescapedValue();
+    public static void Deconstruct(this LexerCharSet charSet, out string value) => value = charSet.GetUnescapedValue();
 }
 
 static class LiteralExtensions
@@ -409,11 +410,21 @@ static class LiteralExtensions
     /// Evaluates the contents of this literal including any escape
     /// sequences into the actual characters they represent.
     /// </summary>
-    public static string GetValue(this Literal literal)
+    public static string GetUnescapedValue(this Literal literal)
+        => EvaluateEscapeSequencesInAntlrStringLiteral(literal.Text);
+
+    /// <summary>
+    /// Evaluates the contents of this character set including any escape
+    /// sequences into the actual characters they represent.
+    /// </summary>
+    public static string GetUnescapedValue(this LexerCharSet charSet)
+        => EvaluateEscapeSequencesInAntlrStringLiteral(charSet.Value);
+
+    static string EvaluateEscapeSequencesInAntlrStringLiteral(string literalText)
     {
-        StringBuilder output = new(literal.Text.Length, literal.Text.Length);
+        StringBuilder output = new(literalText.Length, literalText.Length);
         Span<char> buffer = stackalloc char[2];
-        ReadOnlySpan<char> rest = literal.Text.AsSpan();
+        ReadOnlySpan<char> rest = literalText.AsSpan();
         while (!rest.IsEmpty)
         {
             if (tryReplace(@"\n", '\n', ref rest)

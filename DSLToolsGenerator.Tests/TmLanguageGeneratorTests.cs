@@ -26,6 +26,8 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
     [InlineData(@".+?", @".+?")]
     [InlineData(@"'a'..'z'", @"[a-z]")]
     [InlineData(@"[a-z]", @"[a-z]")]
+    [InlineData(@"[^'\n]", @"[\^'\n]")]
+    [InlineData(@"[-]", @"[-]")]
     [InlineData(@"[a-zA-Z]", @"[a-zA-Z]")]
     [InlineData(@"[a-zA-Z-]", @"[a-zA-Z-]")]
     [InlineData(@"EOF", @"\z")]

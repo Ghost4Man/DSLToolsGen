@@ -323,8 +323,8 @@ public partial class TmLanguageGenerator
                 RegexWarningComment($"unknown ref {name} at line {tr.Span.Begin.Line}"),
             Literal(string value) { IsNot: true } => $"[^{EscapeAsRegex(value)}]",
             Literal(string value) => EscapeAsRegex(value),
-            LexerCharSet set => $"[{(set.IsNot ? "^" : "")}{set.Value}]",
-            //_ => throw new NotImplementedException($"{node.GetType().Name} {node}: not yet implemented"),
+            LexerCharSet(string chars) set =>
+                $"{(set.IsNot ? "[^" : "[")}{EscapeAsRegex(chars, "-")}]",
             _ => RegexWarningComment($"unknown node: {node.GetType().Name} {node}"),
         };
 
@@ -359,9 +359,10 @@ public partial class TmLanguageGenerator
         return $"(?# {commentText} )" + (forceFail ? "((?!))" : "");
     }
 
-    string EscapeAsRegex(string text) =>
+    string EscapeAsRegex(string text, string charsToKeepUnescaped = "") =>
         RegexControlCharactersPattern()
             .Replace(text, m => m.Groups[1].Value switch {
+                [char c] when charsToKeepUnescaped.Contains(c) => c.ToString(),
                 "\n" => """\n""",
                 "\r" => """\r""",
                 "\f" => """\f""",

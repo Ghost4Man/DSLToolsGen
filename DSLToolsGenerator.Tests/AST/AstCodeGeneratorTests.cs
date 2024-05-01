@@ -390,18 +390,22 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }
 
-    [Fact(Skip = "Low priority")]
+    [Fact]
     public void given_rule_with_unlabeled_alts_ー_generates_autonamed_derived_records()
     {
         AstCodeGenerator g = GetGeneratorForGrammar($$"""
             {{grammarProlog}}
-            expr : ID | NUMBER | STR_LIT ;
+            expr : ID | NUMBER | STR_LIT | boolean=BOOLVALUE | 'null' ;
+            NULL : 'null' ;
+            BOOLVALUE : 'true' | 'false' ;
             """);
         Assert.Equal("""
             public abstract partial record Expression : AstNode;
                 public partial record IdentifierExpression(string Identifier) : Expression;
                 public partial record NumberExpression(string Number) : Expression;
                 public partial record StringLiteralExpression(string StringLiteral) : Expression;
+                public partial record BooleanExpression(string Boolean) : Expression;
+                public partial record NullExpression : Expression;
             """,
             ModelToString(g.GenerateAstCodeModel().NodeClasses).TrimEnd());
     }

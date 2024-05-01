@@ -16,7 +16,7 @@ file class GrammarAttachedData
 
     public string? ParserClassName { get; set; }
 
-    public Dictionary<string, Rule> LexerRulesByLiteral { get; set; } = new();
+    public Dictionary<string, Rule>? LexerRulesByLiteral { get; set; }
 }
 
 file class SyntaxElementAttachedData

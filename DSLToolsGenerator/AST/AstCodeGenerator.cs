@@ -99,12 +99,27 @@ public partial class AstCodeGenerator
 
                 string ruleClassName = GetGeneratedClassName(parserRule);
 
-                //// auto name from single element
-                //if (alts.All(a => a.Elements.Count <= 1))
-                //    return alts.ConvertAll(a => a.Elements[0]);
+                // auto name from single element
+                if (alts.ConvertAll(a => getAltName(a.Elements)) is var names
+                    && !names.Contains(null))
+                {
+                    return names
+                        .WhereNotNull()
+                        .Select(n => ToPascalCase(ExpandAllAbbreviations(n))
+                                     + GetGeneratedClassName(parserRule));
+                }
 
                 // fallback
                 return alts.Select((_, i) => $"{ruleClassName}_{i}").ToList();
+
+                string? getAltName(IReadOnlyList<SyntaxElement> elements) => elements switch {
+                    [] => "empty",
+                    [{ Label: string label }] => label,
+                    [TokenRef r] => r.Name,
+                    [RuleRef r] => r.Name,
+                    [Literal l] => l.Resolve(grammar).Name,
+                    _ => null,
+                };
             }
         }
     }
@@ -190,7 +205,8 @@ public partial class AstCodeGenerator
                     $"reference to unknown parser rule '{ruleRef.Name}'"));
             }
         }
-        else if (element is TokenRef tokenRef && IsTokenTextImportant(tokenRef))
+        else if (element is TokenRef tokenRef
+            && (tokenRef.Label is not null || IsTokenTextImportant(tokenRef)))
         {
             ResolvedTokenRef resolvedTokenRef = Resolve(tokenRef);
             string propertyName = makePropertyName(element, tokenRef.Name, list: isRepeated);

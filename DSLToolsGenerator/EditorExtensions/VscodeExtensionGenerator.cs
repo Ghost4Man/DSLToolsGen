@@ -215,7 +215,7 @@ public class VscodeExtensionGenerator
                 await starting;
             }
             catch (error) {
-                client.error(`Error while starting FCSS language client: ${error}`, error, false);
+                client.error(`Error while starting LSP client of {{LanguageClientName}}: ${error}`, error, false);
                 showConnectionErrorAndOfferRestart(devTcpMode
                     ? `${error}. Is the language server running in dev (TCP server) mode?`
                     : `${error}`);

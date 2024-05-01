@@ -130,7 +130,7 @@ public class LanguageServerGenerator
             ///     which can be used to analyze the syntax of the given document.</param>
             /// <param name="diagnostics">A (mutable) collection of diagnostics (errors, warnings).</param>
             protected abstract Task<Document> AnalyzeDocument(
-                TextDocumentIdentifier documentId, string documentText, FCSSParser parser,
+                TextDocumentIdentifier documentId, string documentText, {{ParserClassName}} parser,
                 IList<Diagnostic> diagnostics);
 
             protected virtual {{ParserClassName}} CreateParser(string documentText,

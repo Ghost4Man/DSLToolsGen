@@ -42,7 +42,7 @@ generateAstCommand.SetHandler(w =>
         .RunGenerators(new OutputSet { AST = true }),
     watchOption);
 
-var generateLanguageServerCommand = new Command("languageserver",
+var generateLanguageServerCommand = new Command("languageServer",
     "generates C# code of a (LSP) language server")
     { watchOption };
 generateLanguageServerCommand.SetHandler(w =>

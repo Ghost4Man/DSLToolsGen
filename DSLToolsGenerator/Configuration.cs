@@ -288,8 +288,9 @@ namespace DSLToolsGenerator.SyntaxHighlighting
         """{ "RuleNames": ["${1}", "${2}"] }""")]
     public record RuleConflict(IReadOnlyList<string> RuleNames);
 
-    public record RuleOptions(
-        [property:
+    public record RuleOptions
+    {
+        [
             Snippet("\"keyword\""),
             Snippet("\"keyword.operator\""),
             Snippet("\"keyword.control\""),
@@ -343,8 +344,27 @@ namespace DSLToolsGenerator.SyntaxHighlighting
             Snippet("\"comment.line\""),
             Snippet("\"comment.block\""),
         ]
-        string TextMateScopeName
-    );
+        public string? TextMateScopeName { get; init; }
+
+        /// <summary>
+        /// Specifies whether and how to automatically reorder alternatives
+        /// within blocks like <c>('.var.' | '.var.mut.' | '.var.mut.global.')</c>
+        /// as an attempt to fix shadowing (<c>.var.mut.</c> could never match anything
+        /// since the <c>.var.</c> part would always be matched by the first alternative).
+        /// </summary>
+        [DefaultValue(DefaultAltReorderingMode)]
+        public AltReorderingMode? AltReordering { get; init; }
+
+        public const AltReorderingMode DefaultAltReorderingMode = AltReorderingMode.ByPatternLength;
+    }
+
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public enum AltReorderingMode
+    {
+        None = 0,
+        LiteralsOnly = 1,
+        ByPatternLength = 2,
+    }
 }
 
 namespace DSLToolsGenerator.EditorExtensions

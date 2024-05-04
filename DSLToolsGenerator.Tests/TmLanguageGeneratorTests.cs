@@ -331,8 +331,8 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
             config: new() {
                 SyntaxHighlighting = new() {
                     RuleSettings = new Dictionary<string, RuleOptions>() {
-                        ["TAG"] = new(TextMateScopeName: "entity.name.tag"),
-                        ["BOLD"] = new(TextMateScopeName: "markup.bold"),
+                        ["TAG"] = new() { TextMateScopeName = "entity.name.tag" },
+                        ["BOLD"] = new() { TextMateScopeName = "markup.bold" },
                     }
                 }
             });
@@ -359,10 +359,10 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
             config: new() {
                 SyntaxHighlighting = new() {
                     RuleSettings = new Dictionary<string, RuleOptions>() {
-                        ["TAG"] = new(TextMateScopeName: "entity.name.tag"),
-                        ["BOLD"] = new(TextMateScopeName: "markup.bold"),
-                        ["'if'"] = new(TextMateScopeName: "keyword.control.if"),
-                        ["':'"] = new(TextMateScopeName: "punctuation.colon"),
+                        ["TAG"] = new() { TextMateScopeName = "entity.name.tag" },
+                        ["BOLD"] = new() { TextMateScopeName = "markup.bold" },
+                        ["'if'"] = new() { TextMateScopeName = "keyword.control.if" },
+                        ["':'"] = new() { TextMateScopeName = "punctuation.colon" },
                     }
                 }
             });

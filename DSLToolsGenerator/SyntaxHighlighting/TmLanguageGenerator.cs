@@ -342,10 +342,29 @@ public partial class TmLanguageGenerator
 
     string RegexForAltList(AlternativeList altList, IEnumerable<Rule> parentRules)
     {
-        return altList.Items.WhereNotNull()
-            .Select(a => MakeRegex(a, parentRules))
-            .OrderByDescending(a => a.Length)
+        var reorderingMode = parentRules
+            .Select(r => RuleSettings?.GetValueOrDefault(r.Name)?.AltReordering)
+            .WhereNotNull()
+            .LastOrDefault(RuleOptions.DefaultAltReorderingMode);
+
+        var alts = altList.Items.WhereNotNull();
+        bool shouldReorderAlts = reorderingMode switch {
+            AltReorderingMode.ByPatternLength => true,
+            AltReorderingMode.LiteralsOnly => allAltsAreLiteralsOnly(alts),
+            _ => false,
+        };
+
+        var altPatterns = alts.Select(a => MakeRegex(a, parentRules));
+        return (shouldReorderAlts
+                ? altPatterns.OrderByDescending(a => a.Length)
+                : altPatterns)
             .MakeString("|");
+
+        bool allAltsAreLiteralsOnly(IEnumerable<Alternative> alts)
+            => alts.All(a =>
+                a.Elements.All(e => e is Literal || (e is TokenRef tr
+                    && tr.GetRuleOrNull(Grammar) is Rule r
+                    && allAltsAreLiteralsOnly(r.GetAlts()))));
     }
 
     string RegexWarningComment(string text, bool emitWarning = true, bool forceFail = false)

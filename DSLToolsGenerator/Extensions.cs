@@ -1,5 +1,4 @@
 ﻿using System.Reactive.Linq;
-using System.Runtime.InteropServices;
 
 using Microsoft.Extensions.FileProviders;
 
@@ -119,17 +118,23 @@ static class EnumerableExtensions
 
 public static class DictionaryExtensions
 {
+    /// <summary>
+    /// Retrieves a value from the dictionary or
+    /// computes a new value using the specified function.
+    /// </summary>
+    /// <param name="temporaryValue">A temporary value to store in the
+    ///     dictionary before running <paramref name="initializer"/>.</param>
     public static TValue GetValueOrInitialize<TKey, TValue>(this Dictionary<TKey, TValue> dictionary,
-        TKey key, Func<TKey, TValue> initializer)
+        TKey key, Func<TKey, TValue> initializer, TValue? temporaryValue = default)
         where TKey : notnull
     {
-        ref TValue? value = ref CollectionsMarshal.GetValueRefOrAddDefault(
-            dictionary, key, out bool exists);
-        if (!exists)
+        if (!dictionary.TryGetValue(key, out var value))
         {
+            dictionary[key] = temporaryValue!;
             value = initializer(key);
+            dictionary[key] = value;
         }
-        return value!;
+        return value;
     }
 }
 

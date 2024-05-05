@@ -1,5 +1,7 @@
 ﻿using Antlr4Ast;
 
+using NSourceGenerators;
+
 namespace DSLToolsGenerator.LSP;
 
 public class LanguageServerGenerator
@@ -45,6 +47,8 @@ public class LanguageServerGenerator
                 using Microsoft.Extensions.DependencyInjection;
                 using Antlr4.Runtime;
                 using Antlr4.Runtime.Tree;
+                using Antlr4.Runtime.Atn;
+                using Antlr4.Runtime.Misc;
                 using MediatR;
                 using OmniSharp.Extensions.JsonRpc;
                 using LSP = OmniSharp.Extensions.LanguageServer;
@@ -83,6 +87,8 @@ public class LanguageServerGenerator
                 {{_ => GenerateDocumentClass()}}
 
                 {{_ => GenerateAstRequestHandler()}}
+
+                {{_ => GenerateCodeCompletionHelperClass()}}
             }
             """);
     }
@@ -540,6 +546,9 @@ public class LanguageServerGenerator
             public record struct Property(string Name, object? Value, string TypeName);
         }
         """);
+
+    public void GenerateCodeCompletionHelperClass()
+        => Output.WriteLine(CodeToStringRepo.GetText("CodeCompletionHelperClass"));
 
     public static LanguageServerGenerator FromConfig(
         Configuration config, Grammar grammar,

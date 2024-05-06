@@ -420,7 +420,9 @@ public class LanguageServerGenerator
         /// </summary>
         public partial class SemanticTokensBuilderReorderBuffer(LSP.Protocol.Document.SemanticTokensBuilder builder)
         {
-            protected virtual List<(Range range, SemanticTokenType? type, SemanticTokenModifier[] modifiers)> LineTokens { get; } = new();
+            protected virtual List<(Range range, SemanticTokenType? type, SemanticTokenModifier[] modifiers)> BufferedTokens { get; } = new();
+
+            public bool AutoFlushPreviousLine { get; set; } = true;
 
             /// <summary>
             /// If <paramref name="pushedToken"/> is on a new line, flushes previously buffered tokens.
@@ -431,12 +433,14 @@ public class LanguageServerGenerator
                 if (range is null)
                     return;
 
-                if (LineTokens is [.., var last] && range.Start.Line > last.range.Start.Line) // new line
+                if (AutoFlushPreviousLine
+                    && BufferedTokens is [.., var last]
+                    && range.Start.Line > last.range.Start.Line) // new line
                 {
                     Flush();
                 }
 
-                LineTokens.Add((range, pushedToken.type, pushedToken.modifiers));
+                BufferedTokens.Add((range, pushedToken.type, pushedToken.modifiers));
             }
 
             /// <summary>
@@ -447,12 +451,12 @@ public class LanguageServerGenerator
             /// </summary>
             public void Flush()
             {
-                LineTokens.Sort(static (a, b) => a.range.Start.CompareTo(b.range.Start));
-                foreach (var token in LineTokens)
+                BufferedTokens.Sort(static (a, b) => a.range.Start.CompareTo(b.range.Start));
+                foreach (var token in BufferedTokens)
                 {
                     builder.Push(token.range, token.type, token.modifiers);
                 }
-                LineTokens.Clear();
+                BufferedTokens.Clear();
             }
         }
         """);

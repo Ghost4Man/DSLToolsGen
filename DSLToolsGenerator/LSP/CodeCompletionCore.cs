@@ -182,7 +182,9 @@ public class CodeCompletionCore
             else
             {
                 // if last token is not EOF, limit to matching tokens which excludes trailing whitespace
-                endOffset = this.tokens[endToken - 1].StopIndex + 1;
+                endOffset = (endToken > 0)
+                    ? this.tokens[endToken - 1].StopIndex + 1
+                    : 0;
             }
 
             this.candidates.RulePositions[ruleId] = (startOffset, endOffset);

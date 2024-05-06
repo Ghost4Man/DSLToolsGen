@@ -67,3 +67,17 @@ public class VscodeExtensionGeneratorRunner(
         await handler(grammar, config);
     }
 }
+
+public class ParserGeneratorRunner(
+    Func<Grammar, Configuration, Task> handler) : IGeneratorRunner
+{
+    public IObservable<Func<Task>?> ObserveAndRegisterRunner(GeneratorInputs inputs)
+        => Observable.CombineLatest(inputs.Grammar, inputs.Configuration,
+            (g, c) => g is null || c is null ? null : (Func<Task>)(() => Run(g, c)));
+
+    public async Task Run(Grammar grammar, Configuration config)
+    {
+        Console.WriteLine("Running ANTLR...");
+        await handler(grammar, config);
+    }
+}

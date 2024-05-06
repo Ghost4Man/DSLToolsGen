@@ -12,7 +12,8 @@ public class GeneratorPipeline(GeneratorPipelineInputs inputs,
     AstCodeGeneratorRunner? astCodeGeneratorRunner,
     LanguageServerGeneratorRunner? languageServerGeneratorRunner,
     TmLanguageGeneratorRunner? tmLanguageGeneratorRunner,
-    VscodeExtensionGeneratorRunner? vscodeExtensionGeneratorRunner)
+    VscodeExtensionGeneratorRunner? vscodeExtensionGeneratorRunner,
+    ParserGeneratorRunner? parserGeneratorRunner)
 {
     readonly EqualityComparer<IReadOnlyList<IGeneratorRunner>> collectionEqualityComparer =
         EqualityComparer<IReadOnlyList<IGeneratorRunner>>.Create(
@@ -48,14 +49,13 @@ public class GeneratorPipeline(GeneratorPipelineInputs inputs,
         var generatorRun = generators
             .Select(observeInputAndRunGenerators)
             .Switch()
-            .Replay(1).AutoConnect();
-
-        // Run the generators whose inputs have been updated
-        generatorRun
             .WhereNotNull()
             .Select(Observable.FromAsync)
             .Concat()
-            .Subscribe();
+            .Replay(1).AutoConnect();
+
+        // Run the generators whose inputs have been updated
+        generatorRun.Subscribe();
 
         // Wait until the "last" generator run
         // (i.e. the first and only one if watch mode is disabled,
@@ -77,7 +77,8 @@ public class GeneratorPipeline(GeneratorPipelineInputs inputs,
         if (astCodeGeneratorRunner is null
             || languageServerGeneratorRunner is null
             || tmLanguageGeneratorRunner is null
-            || vscodeExtensionGeneratorRunner is null)
+            || vscodeExtensionGeneratorRunner is null
+            || parserGeneratorRunner is null)
             throw new InvalidOperationException("Missing Generator Runners!");
 
         return getGenerators();
@@ -92,6 +93,8 @@ public class GeneratorPipeline(GeneratorPipelineInputs inputs,
                 yield return tmLanguageGeneratorRunner;
             if (outputSet.VscodeExtension)
                 yield return vscodeExtensionGeneratorRunner;
+            if (outputSet.Parser)
+                yield return parserGeneratorRunner;
         }
     }
 }

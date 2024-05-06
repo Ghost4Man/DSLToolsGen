@@ -16,6 +16,8 @@ file class GrammarAttachedData
 
     public string? ParserClassName { get; set; }
 
+    public FileInfo? LexerGrammarFile { get; set; }
+
     public Dictionary<string, Rule>? LexerRulesByLiteral { get; set; }
 }
 
@@ -54,6 +56,17 @@ static class GrammarExtensions
         });
 
         grammar.ParserRules.ForEach(AssignElementIndices);
+    }
+
+    public static FileInfo? GetLexerGrammarFile(this Grammar grammar)
+        => GrammarAttachedData.Storage.TryGetValue(grammar, out var data)
+            ? data.LexerGrammarFile
+            : null;
+
+    public static void SetLexerGrammarFile(this Grammar grammar, FileInfo lexerGrammar)
+    {
+        GrammarAttachedData.Storage.GetOrCreateValue(grammar)
+            .LexerGrammarFile = lexerGrammar;
     }
 
     record struct IndexCounterState(

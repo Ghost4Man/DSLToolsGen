@@ -1,5 +1,6 @@
 using System.CommandLine;
 using System.CommandLine.Parsing;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -112,6 +113,11 @@ GeneratorPipeline InitializePipeline(bool watchForChanges)
         new VscodeExtensionGeneratorRunner(async (g, c) => {
             if (checkConfigValueIsPresent(c.VscodeExtension, out _))
                 await GenerateVscodeExtension(g, c);
+        }),
+        new ParserGeneratorRunner(async (g, c) => {
+            if (checkConfigValueIsPresent(c.Parser.OutputDirectory, out var outputPath)
+                && checkConfigValueIsPresent(c.Parser.AntlrCommand, out var command))
+                await RunAntlr(g, c, command, outputPath);
         }));
 
     bool checkConfigValueIsPresent<T>(T value, [NotNullWhen(true)] out T? valueIfPresent,
@@ -224,6 +230,44 @@ Task<int> GenerateVscodeExtension(Grammar grammar, Configuration config)
     return Task.FromResult(0);
 }
 
+async Task<int> RunAntlr(Grammar grammar, Configuration config, string command, string outputDirectory)
+{
+    // split to (for example): ["java", "-jar", "antlr.jar"]
+    var commandParts = new Parser().Parse(command).Tokens.Select(t => t.Value).ToList();
+    //string[] commandParts = command.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+    string?[] grammarPaths = [
+        grammar.GetLexerGrammarFile()?.FullName,
+        config.GrammarFile! // we know grammar is not null, so GrammarFile must be non-null too
+    ];
+    string[] args = [..commandParts[1..], ..grammarPaths.WhereNotNull(),
+        "-visitor", "-listener",
+        "-o", outputDirectory,
+        "-Dlanguage=CSharp",
+        ..(config.Parser.Namespace is { } ns ? ["-package", ns] : Array.Empty<string>()),
+    ];
+    await Console.Error.WriteLineAsync(AnsiColors.Gray +
+        $"Launching process `{commandParts[0]}`" +
+        $" with arguments [{args.Select(a => $"`{a}`").MakeString(", ")}]"
+        + AnsiColors.Default);
+    try
+    {
+        //ProcessStartInfo startInfo = new(commandParts[0], commandParts.ElementAtOrDefault(1) ?? "");
+
+        //foreach (string arg in args)
+        //    startInfo.ArgumentList.Add(arg);
+        //var process = Process.Start(commandParts[0], args);
+        var process = Process.Start(commandParts[0], args);
+        await process.WaitForExitAsync();
+        return process.ExitCode;
+    }
+    catch (Exception ex)
+    {
+        await Console.Error.WriteLineAsync("Error while starting ANTLR: " +
+            $"{ex.GetType().Name}: {ex.Message}");
+        return 1;
+    }
+}
+
 bool TryParseGrammarAndReportErrors(IFileInfo grammarFile,
     [NotNullWhen(returnValue: true)] out Grammar? grammar,
     GrammarKind? expectedGrammarKind = null)
@@ -262,11 +306,13 @@ bool TryParseGrammarAndReportErrors(IFileInfo grammarFile,
     // Merge associated lexer grammar
     if (grammar.Options.Find("tokenVocab")?.Value is string tokenVocabValue)
     {
-        var lexerGrammarFile = new PhysicalFileInfo(new FileInfo(
-            Path.Combine(grammarFile.GetDirectoryName() ?? ".", tokenVocabValue + ".g4")));
+        var fileInfo = new FileInfo(
+            Path.Combine(grammarFile.GetDirectoryName() ?? ".", tokenVocabValue + ".g4"));
+        var lexerGrammarFile = new PhysicalFileInfo(fileInfo);
         if (!TryParseGrammarAndReportErrors(lexerGrammarFile, out Grammar? lexerGrammar, GrammarKind.Lexer))
             return false;
 
+        grammar.SetLexerGrammarFile(fileInfo);
         grammar.MergeFrom(lexerGrammar);
         grammar.Kind = GrammarKind.Full;
     }
@@ -347,4 +393,10 @@ static Configuration? LoadConfiguration(IFileInfo file, bool warnIfNotFound = fa
     }
 
     return config;
+}
+
+static class AnsiColors
+{
+    public const string Gray = "\u001b[90m";
+    public const string Default = "\u001b[39m";
 }

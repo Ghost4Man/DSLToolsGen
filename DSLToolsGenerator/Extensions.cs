@@ -162,12 +162,11 @@ public static class ObservableExtensions
 
     public static IObservable<T> Log<T>(this IObservable<T> observable, string label)
     {
-        const string GRAY = "\u001b[90m";
-        const string DEFAULT = "\u001b[39m";
-
         return observable.Do(
             onNext: x => Console.Error.WriteLine(
-                $"{GRAY}{label} was {(x is null ? "updated to null" : "modified")}.{DEFAULT}"),
+                AnsiColors.Gray +
+                $"{label} was {(x is null ? "updated to null" : "modified")}." +
+                AnsiColors.Default),
             onError: e => Console.Error.WriteLine(
                 $"{label} - IObservable error: {e.GetType().Name}: {e.Message}"));
     }

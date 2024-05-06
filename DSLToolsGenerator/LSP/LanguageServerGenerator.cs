@@ -91,6 +91,8 @@ public class LanguageServerGenerator
                 {{_ => GenerateCodeCompletionHelperClass()}}
 
                 {{_ => GenerateBasicCodeCompletionHandler()}}
+                
+                {{_ => GenerateBasicSemanticTokensHandler()}}
             }
             """);
     }
@@ -665,6 +667,56 @@ public class LanguageServerGenerator
             _ => null,
         };
     }
+
+    public void GenerateBasicSemanticTokensHandler() => Output.WriteCode($$"""
+        public class BasicSemanticTokensHandler(DocumentManager documents) : SemanticTokensHandlerBase
+        {
+            protected virtual SemanticTokensLegend SemanticTokensLegend { get; } = new();
+
+            protected override SemanticTokensRegistrationOptions CreateRegistrationOptions(SemanticTokensCapability capability, ClientCapabilities clientCapabilities)
+                => new() {
+                    Full = new SemanticTokensCapabilityRequestFull { Delta = false },
+                    Range = true,
+                    Legend = SemanticTokensLegend,
+                };
+
+            protected override async Task<SemanticTokensDocument> GetSemanticTokensDocument(
+                ITextDocumentIdentifierParams @params, CancellationToken cancellationToken)
+            {
+                // since we don't support Delta requests, just return a new document every time
+                return new SemanticTokensDocument(SemanticTokensLegend);
+            }
+
+            protected override async Task Tokenize(SemanticTokensBuilder builder,
+                ITextDocumentIdentifierParams @params, CancellationToken cancellationToken)
+            {
+                Document? doc = documents.Get(@params.TextDocument.Uri);
+                if (doc is null)
+                {
+                    await Console.Error.WriteLineAsync($"cannot fulfill request for unknown document: {@params.TextDocument.Uri}");
+                    return;
+                }
+
+                var nodes = @params is SemanticTokensRangeParams { Range: Range range }
+                    ? doc.GetNodesBetweenLines(range.Start.Line, range.End.Line)
+                    : doc.Ast.GetAllDescendantNodes();
+
+                var bufferedBuilder = new SemanticTokensBuilderReorderBuffer(builder);
+
+                foreach (AstNode node in nodes)
+                {
+                    PushSemanticTokensForNode(doc, node, bufferedBuilder);
+                }
+
+                bufferedBuilder.Flush();
+            }
+
+            public virtual void PushSemanticTokensForNode(
+                Document document, AstNode node, SemanticTokensBuilderReorderBuffer tokens)
+            {
+            }
+        }
+        """);
 
     Action<IndentedTextWriter> ForEach<T>(IEnumerable<T> items, Action<T> action)
     {

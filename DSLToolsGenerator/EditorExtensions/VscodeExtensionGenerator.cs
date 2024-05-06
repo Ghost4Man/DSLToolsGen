@@ -250,7 +250,7 @@ public class VscodeExtensionGenerator
                         client.warn(`Connection to language server was closed due to an error`, null, true);
                         if (shouldAttemptToReconnect) {
                             shouldAttemptToReconnect = false;
-                            await statusBarCountDown(5, "Attempting to reconnect");
+                            await statusBarCountDown(10, "Attempting to reconnect");
                             await startClient();
                             await new Promise(resolve => setTimeout(resolve, 5000));
                             shouldAttemptToReconnect = true;

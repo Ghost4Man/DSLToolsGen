@@ -89,6 +89,8 @@ public class LanguageServerGenerator
                 {{_ => GenerateAstRequestHandler()}}
 
                 {{_ => GenerateCodeCompletionHelperClass()}}
+
+                {{_ => GenerateBasicCodeCompletionHandler()}}
             }
             """);
     }
@@ -549,6 +551,130 @@ public class LanguageServerGenerator
 
     public void GenerateCodeCompletionHelperClass()
         => Output.WriteLine(CodeToStringRepo.GetText("CodeCompletionHelperClass"));
+
+    public void GenerateBasicCodeCompletionHandler()
+    {
+        Output.WriteCode($$"""
+            public class BasicCodeCompletionHandler(DocumentManager documents) : CompletionHandlerBase
+            {
+                public override async Task<CompletionList> Handle(CompletionParams e, CancellationToken cancellationToken)
+                {
+                    Document? doc = documents.Get(e.TextDocument.Uri);
+                    if (doc is null)
+                    {
+                        await Console.Error.WriteLineAsync($"cannot fulfill request for unknown document: {e.TextDocument.Uri}");
+                        return [];
+                    }
+
+                    var codeCompletion = InitializeCodeCompletion(doc);
+
+                    var tokenAtCaret = doc.FindTokenAt(e.Position, preferLeftTokenAtBoundary: true);
+                    await Console.Error.WriteLineAsync($"token at caret: {tokenAtCaret?.ToString() ?? "null"}");
+
+                    if (tokenAtCaret?.TokenIndex is not int caretTokenIndex)
+                        return [];
+
+                    var nodeAtCaret = doc.FindDeepestNodeAt(e.Position);
+                    await Console.Error.WriteLineAsync($"node at caret: {nodeAtCaret?.GetType().Name ?? "null"}");
+
+                    var candidates = codeCompletion.CollectCandidates(caretTokenIndex, context: nodeAtCaret?.ParserContext);
+                    return candidates.Tokens
+                        .Select(kvp => {
+                            if (doc.Parser.Vocabulary.GetLiteralName(kvp.Key) is not string literalText)
+                                return null;
+                            return new CompletionItem {
+                                Label = literalText[1..^1],
+                                Kind = CompletionItemKind.Keyword,
+                                LabelDetails = new() { Description = "token" },
+                            };
+                        })
+                        .Concat(candidates.Rules.SelectMany(kvp =>
+                            GetCompletionsForRule(doc, kvp.Key, kvp.Value)))
+                        .WhereNotNull()
+                        .ToList();
+                }
+
+                public virtual IEnumerable<CompletionItem> GetCompletionsForRule(
+                    Document doc, int ruleIndex, IList<int> callStack)
+                {
+                    string ruleName = doc.Parser.RuleNames[ruleIndex];
+
+                    return (GetCompletionSnippetForRule(ruleName) ?? [])
+                        .DefaultIfEmpty((label: ruleName, snippet: "${1:" + ruleName + "}"))
+                        .Select(s => new CompletionItem {
+                            Label = s.label,
+                            Kind = CompletionItemKind.Snippet,
+                            //Documentation = "rule call stack: " + string.Concat(
+                            //    callStack.Select(ri => "\n- " + doc.Parser.RuleNames[ri])),
+                            LabelDetails = new() { Description = "rule" },
+                            InsertTextFormat = InsertTextFormat.Snippet,
+                            InsertText = s.snippet,
+                        });
+                }
+
+                public override Task<CompletionItem> Handle(CompletionItem request, CancellationToken cancellationToken)
+                    => Task.FromResult(request);
+
+                protected override CompletionRegistrationOptions CreateRegistrationOptions(CompletionCapability capability, ClientCapabilities clientCapabilities)
+                    => new();
+
+                public virtual CodeCompletionCore InitializeCodeCompletion(Document doc)
+                {
+                    return new CodeCompletionCore(doc.Parser,
+                        preferredRules: new HashSet<int> {
+                            {{ForEach(Grammar.ParserRules, r => Output.WriteCode($""""
+                                {ParserClassName}.RULE_{r.Name},
+                                """"))}}
+                        },
+                        ignoredTokens: null);
+                }
+
+                public virtual (string label, string snippet)[]? GetCompletionSnippetForRule(string ruleName) => ruleName switch {
+                    {{ForEach(Grammar.ParserRules, r => Output.WriteCode($""""
+                        "{r.Name}" => [
+                            {ForEach(r.GetAlts(), a => writeSnippetForAlt(r, a))}
+                        ],
+                        """"))}}
+                    _ => null,
+                };
+            }
+            """);
+
+        void writeSnippetForAlt(Rule rule, Alternative alt)
+        {
+            if (makeSnippetForAlt(rule, alt) is not (string snippet and not ""))
+                return;
+            Output.WriteCode($""""
+                ("{alt.ParserLabel ?? rule.Name}", """{snippet}"""),
+                """");
+        }
+
+        string makeSnippetForAlt(Rule rule, Alternative alt)
+        {
+            int placeholderCounter = 1;
+            return string.Join(" ", alt.Elements
+                .Select(e => getSnippetTextForElement(e, ref placeholderCounter))
+                .TakeWhile(s => s is not null));
+        }
+
+        string? getSnippetTextForElement(SyntaxElement element, ref int placeholderCounter) => element switch {
+            Literal(string text) => text,
+            TokenRef tr when tr.GetTokenText(Grammar) is string text => text,
+            { Label: string label } => $"${{{placeholderCounter++}:{label}}}",
+            RuleRef(string ruleName) => $"${{{placeholderCounter++}:{ruleName}}}",
+            _ => null,
+        };
+    }
+
+    Action<IndentedTextWriter> ForEach<T>(IEnumerable<T> items, Action<T> action)
+    {
+        return _ => {
+            foreach (var item in items)
+            {
+                action(item);
+            }
+        };
+    }
 
     public static LanguageServerGenerator FromConfig(
         Configuration config, Grammar grammar,

@@ -330,6 +330,15 @@ static class TokenRefExtensions
 {
     public static Rule? GetRuleOrNull(this TokenRef tokenRef, Grammar grammar)
         => grammar.TryGetRule(tokenRef.Name, out Rule? rule) ? rule : null;
+
+    public static string? GetTokenText(this TokenRef tokenRef, Grammar grammar)
+    {
+        if (tokenRef.GetRuleOrNull(grammar) is not Rule lexerRule)
+            return null;
+
+        return grammar.GetSingleTokenLexerRules()
+            .FirstOrDefault(r => r.Rule == lexerRule).Literal?.Text;
+    }
 }
 
 static class SyntaxNodeExtensions

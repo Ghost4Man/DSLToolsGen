@@ -201,7 +201,7 @@ public class LanguageServerGenerator
         """);
 
     public void GenerateHoverHandler() => Output.WriteCode($$""""
-        public class HoverHandler(DocumentManager documents) : HoverHandlerBase
+        public class BasicHoverHandler(DocumentManager documents) : HoverHandlerBase
         {
             public override async Task<Hover?> Handle(HoverParams request, CancellationToken cancellationToken)
             {
@@ -212,6 +212,12 @@ public class LanguageServerGenerator
                     return null;
                 }
 
+                return await GetHover(request, cancellationToken, doc);
+            }
+
+            protected virtual async Task<Hover?> GetHover(
+                HoverParams request, CancellationToken cancellationToken, Document doc)
+            {
                 return await Task.Run(() => new Hover {
                     Contents = new(new MarkedString($"""
                         Position: `{request.Position}`

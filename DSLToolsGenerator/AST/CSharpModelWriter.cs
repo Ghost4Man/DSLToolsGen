@@ -232,7 +232,7 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
             else if (astClass.IsAbstract)
             {
                 Output.WriteCode($$"""
-                    public override {{astClass.Name}} Visit{{contextName}}({{contextClassName}}? context)
+                    public virtual {{astClass.Name}} Visit{{contextName}}({{contextClassName}}? context)
                     {
                         if (context is null) return {{astClass.Name}}.Missing;
                     

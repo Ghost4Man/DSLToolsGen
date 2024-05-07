@@ -61,6 +61,7 @@ public class LanguageServerGenerator
                 using {{LSP}}.Protocol.Server.Capabilities;
                 using {{LSP}}.Server;
                 using AstNode = global::{{AstNamespace?.Value.Append(".")}}{{AstNodeBaseClassName}};
+                using AstRootNode = global::{{AstNamespace?.Value.Append(".")}}{{AstRootNodeClassName}};
                 using {{ParserClassName}} = global::{{AntlrNamespace?.Value.Append(".")}}{{ParserClassName}};
                 using {{LexerClassName}} = global::{{AntlrNamespace?.Value.Append(".")}}{{LexerClassName}};
 
@@ -468,7 +469,7 @@ public class LanguageServerGenerator
         """);
 
     public void GenerateDocumentClass() => Output.WriteCode($$"""
-        public partial record Document(string Text, {{AstRootNodeClassName}} Ast, {{ParserClassName}} Parser)
+        public partial record Document(string Text, AstRootNode Ast, {{ParserClassName}} Parser)
         {
             /// <summary>
             /// AST nodes grouped by line index (0..n).

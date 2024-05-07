@@ -117,7 +117,9 @@ public ref struct AutoIndentStringHandler(IndentedTextWriter writer)
         }
 
         var lastLine = GetLastLine(s);
-        temporaryInterpolationIndentation = lastLine.Length - lastLine.TrimStart().Length;
+        temporaryInterpolationIndentation = originalString.Contains('\n')
+            ? lastLine.Length - lastLine.TrimStart().Length
+            : 0;
 
         // if the last line is indentation-only, don't print it immediately, just set the indent
         if (lastLine.IsWhiteSpace())

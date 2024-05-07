@@ -80,6 +80,9 @@ public partial record NodeClassModel(string Name, Rule ParserRule, Alternative? 
     // Visit{SourceContextName}, FooParser.{SourceContextName}Context, etc.
     public string SourceContextName => (SourceAlt?.ParserLabel ?? ParserRule.Name).Capitalize();
 
+    // e.g. type : simpleType | arrayType | functionType ;
+    public bool HasUnlabeledVariants => Variants.Any(v => v.SourceAlt?.ParserLabel is null);
+
     public IEnumerable<NodeClassModel> GetAllSubclassesAndSelf()
         => Variants.SelectMany(nc => nc.GetAllSubclassesAndSelf()).Prepend(this);
 }

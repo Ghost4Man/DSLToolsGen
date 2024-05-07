@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 
 using Antlr4Ast;
@@ -211,10 +212,27 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
             string contextName = astClass.SourceContextName;
             string contextClassName = $"{astBuilderModel.ParserClassName}.{contextName}Context";
 
-            if (astClass.IsAbstract)
+            if (astClass.IsAbstract && astClass.HasUnlabeledVariants)
             {
                 Output.WriteCode($$"""
-                    public virtual {{astClass.Name}} Visit{{contextName}}({{contextClassName}}? context)
+                    public override {{astClass.Name}} Visit{{contextName}}({{contextClassName}}? context)
+                    {
+                        if (context is null) return {{astClass.Name}}.Missing;
+
+                        {{_ => VisitAll(astClass.Variants, "\n", v => Output.WriteCode($$"""
+                            {{_ => writeCodeThatPreparesPropertyValues(v.Properties)}}
+                            if ({{_ => writeCodeThatChecksAlt(v)}})
+                                return {{_ => writeCodeThatCreatesNode(v)}};
+                            """))}}
+
+                        return {{astClass.Name}}.Missing;
+                    }
+                    """);
+            }
+            else if (astClass.IsAbstract)
+            {
+                Output.WriteCode($$"""
+                    public override {{astClass.Name}} Visit{{contextName}}({{contextClassName}}? context)
                     {
                         if (context is null) return {{astClass.Name}}.Missing;
                     
@@ -222,20 +240,42 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
                     }
                     """);
             }
-            else
+            else if (astClass.BaseClass?.HasUnlabeledVariants is null or false)
             {
                 Output.WriteCode($$"""
                     public override {{astClass.Name}} Visit{{contextName}}({{contextClassName}}? context)
                     {
                         if (context is null) return {{astClass.Name}}.Missing;
 
-                        {{_ => VisitAll(astClass.Properties, "\n", p =>
-                            $"var {p.Name} = {GetCodeForExtractingValueFromParseTree(p)};")}}
-                        return new {{astClass.Name}}({{
-                            _ => VisitAll(astClass.Properties, ", ", p => p.Name)
-                            }}) { ParserContext = context };
+                        {{_ => writeCodeThatPreparesPropertyValues(astClass.Properties)}}
+                        return {{_ => writeCodeThatCreatesNode(astClass)}};
                     }
                     """);
+            }
+
+            void writeCodeThatPreparesPropertyValues(IEnumerable<PropertyModel> properties)
+                => VisitAll(properties, "\n", p =>
+                    $"var {p.Name} = {GetCodeForExtractingValueFromParseTree(p)};");
+
+            void writeCodeThatCreatesNode(NodeClassModel astClass) => Output.WriteCodeInline($$"""
+                new {{astClass.Name}}({{
+                    _ => VisitAll(astClass.Properties, ", ", p => p.Name)
+                    }}) { ParserContext = context }
+                """);
+
+            void writeCodeThatChecksAlt(NodeClassModel variant)
+            {
+                if (variant.Properties.FirstOrDefault() is NodeReferencePropertyModel property)
+                    Output.WriteCodeInline($$"""{{property.Name}} is not (null or { IsMissing: true })""");
+                else
+                {
+                    SyntaxElement discriminatorElement = variant.SourceAlt!.Elements[0];
+                    var mappingSource = AstCodeGenerator.CreateMappingSource(discriminatorElement, false);
+                    string? ruleOrTokenName = (discriminatorElement as TokenRef)?.Name
+                        ?? (discriminatorElement as RuleRef)?.Name
+                        ?? (discriminatorElement as Literal)?.Resolve(null!).Name;
+                    Output.WriteCodeInline($"context.{GetValueAccessor(mappingSource, ruleOrTokenName!)} is not null");
+                }
             }
         }
     }
@@ -269,24 +309,26 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
         };
 
         string tokenAccessor(ValueMappingSource source, ResolvedTokenRef token)
-            => accessor(source, token.Name);
+            => GetValueAccessor(source, token.Name);
         string ruleContextAccessor(ValueMappingSource source, NodeClassModel nodeClass)
-            => accessor(source, nodeClass.ParserRule.Name);
+            => GetValueAccessor(source, nodeClass.ParserRule.Name);
 
         string emptyValue(ValueMappingSource source)
             => source is ValueMappingSource.FromLabel(_, LabelKind.PlusAssign) ? "[]" : "null";
-
-        string accessor(ValueMappingSource source, string tokenOrRuleName) => source switch {
-            ValueMappingSource.FromLabel(string label, LabelKind.Assign) => Identifier(label),
-            ValueMappingSource.FromLabel(string label, LabelKind.PlusAssign) => '_' + label,
-            ValueMappingSource.FromGetter(var index) => $"{Identifier(tokenOrRuleName)}({index})"
-        };
 
         string tokenTextAccessor(ValueMappingSource source)
             => source is ValueMappingSource.FromLabel
                 ? "Text" /* IToken.Text */
                 : "GetText()" /* ITerminalNode.GetText() */;
     }
+
+    string GetValueAccessor(ValueMappingSource source, string tokenOrRuleName) => source switch {
+        ValueMappingSource.FromLabel(string label, LabelKind.Assign) => Identifier(label),
+        ValueMappingSource.FromLabel(string label, LabelKind.PlusAssign) => '_' + label,
+        ValueMappingSource.FromGetter(var index)
+            => (Identifier(tokenOrRuleName) ?? throw new ArgumentNullException(nameof(tokenOrRuleName))) +
+                $"({index})"
+    };
 
     /// <summary>
     /// Creates a new <see cref="CSharpModelWriter"/> instance and uses it

@@ -28,6 +28,8 @@ file class SyntaxElementAttachedData
     public ElementIndexInfo? Index { get; set; }
 
     public bool? IsOnlyOfType { get; set; }
+
+    public Grammar? Grammar { get; set; }
 }
 
 /// <summary>
@@ -56,6 +58,11 @@ static class GrammarExtensions
         });
 
         grammar.ParserRules.ForEach(AssignElementIndices);
+
+        foreach (SyntaxElement element in grammar.GetAllDescendants().OfType<SyntaxElement>())
+        {
+            SyntaxElementAttachedData.Storage.GetOrCreateValue(element).Grammar = grammar;
+        }
     }
 
     public static FileInfo? GetLexerGrammarFile(this Grammar grammar)
@@ -406,6 +413,21 @@ static class SyntaxElementExtensions
                 "this extension method requires first calling Analyze on the grammar");
     }
 
+    /// <summary>
+    /// Gets the grammar that contains this element.
+    /// <para>
+    ///   It is necessary to call
+    ///   <see cref="GrammarExtensions.Analyze(Grammar)"/> on the grammar first.
+    /// </para>
+    /// </summary>
+    public static Grammar GetGrammar(this SyntaxElement element)
+    {
+        SyntaxElementAttachedData.Storage.TryGetValue(element, out var elementData);
+        return elementData?.Grammar
+            ?? throw new InvalidOperationException(
+                "this extension method requires first calling Analyze on the grammar");
+    }
+
     // Deconstruct extensions for pattern matching:
 
     public static void Deconstruct(this Block block, out IReadOnlyList<Alternative> alts) => alts = block.Items;
@@ -420,6 +442,8 @@ static class LiteralExtensions
 {
     public static ResolvedTokenRef Resolve(this Literal literal, Grammar grammar)
     {
+        grammar ??= literal.GetGrammar();
+
         var grammarData = GrammarAttachedData.Storage.GetOrCreateValue(grammar);
         grammarData.LexerRulesByLiteral ??= grammar.GetSingleTokenLexerRules()
             .ToDictionary(r => r.Literal.Text, r => r.Rule);

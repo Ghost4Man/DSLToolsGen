@@ -130,8 +130,8 @@ public partial class TmLanguageGenerator
     [GeneratedRegex("""^(?:(INT(EGER)?|DECIMAL|FLOAT(ING_?POINT)?|REAL|HEX(ADECIMAL)?|NUM(BER|ERIC)?)(_?LIT(ERAL)?)?)$""", RegexOptions.IgnoreCase)]
     private partial Regex NumericLiteralPattern();
 
-    [GeneratedRegex("""^(?:((SINGLE_?)?LINE|SL)?_?COMMENT)$""", RegexOptions.IgnoreCase)]
-    private partial Regex LineCommentPattern();
+    [GeneratedRegex("""(?<!NON_?)COMMENT$""", RegexOptions.IgnoreCase)]
+    private partial Regex CommentPattern();
 
     [GeneratedRegex("""^(?:(STR(ING)?|TE?XT|CHR|CHAR(ACTER)?)(_?(LIT(ERAL)?|CONST(ANT)?))?)$""", RegexOptions.IgnoreCase)]
     private partial Regex StringLiteralPattern();
@@ -156,7 +156,7 @@ public partial class TmLanguageGenerator
             _ when RuleIsKeyword(rule) => $"keyword.{ruleScopeSuffix}",
             _ when VariablePattern().IsMatch(trimmedName) => $"variable.{ruleScopeSuffix}",
             _ when NumericLiteralPattern().IsMatch(trimmedName) => $"constant.numeric.{ruleScopeSuffix}",
-            _ when LineCommentPattern().IsMatch(trimmedName) => $"comment.line.{ruleScopeSuffix}",
+            _ when CommentPattern().IsMatch(trimmedName) => $"comment.{ruleScopeSuffix}",
             _ when StringLiteralPattern().IsMatch(trimmedName) => $"string.{ruleScopeSuffix}",
             _ => $"other.{ruleScopeSuffix}",
         };

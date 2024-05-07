@@ -544,9 +544,11 @@ public class LanguageServerGenerator
                         .Select(p => new Property(p.Name, p.GetValue(node) switch {
                             AstNode n => From(n, p.Name),
                             IEnumerable<AstNode> nodes => nodes.Select(n => From(n)).ToList(),
+                            ParserRuleContext c => c.GetType().Name,
                             object value when value.GetType() is { IsPrimitive: true } => value,
-                            var value => value?.ToString()
+                            var value => value?.ToString(),
                         }, p.PropertyType.Name))
+                        .DistinctBy(p => p.Name)
                         .ToList()
                 };
             }

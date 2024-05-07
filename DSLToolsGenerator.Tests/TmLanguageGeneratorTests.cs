@@ -432,7 +432,7 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
         var tokens = TokenizeString(generatedTextMateGrammar, "source.example", input);
         Assert.Collection(tokens,
             ExpectedToken("abc", ["variable.id.example"]),
-            ExpectedToken("// comment here", ["comment.line.comment.example"]));
+            ExpectedToken("// comment here", ["comment.comment.example"]));
     }
 
     [Fact]
@@ -463,7 +463,7 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
         var tokens = TokenizeString(generatedTextMateGrammar, "source.example", input);
         Assert.Collection(tokens,
             ExpectedToken("abc", ["variable.id.example"]),
-            ExpectedToken("// comment here", ["comment.line.comment.example"]),
+            ExpectedToken("// comment here", ["comment.comment.example"]),
             ExpectedToken("/set", ["keyword.set_cmd.example"]),
             ExpectedToken("read.write.", ["keyword.access.example"]),
             ExpectedToken("x", ["variable.id.example"]),

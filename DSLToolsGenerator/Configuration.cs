@@ -305,6 +305,15 @@ namespace DSLToolsGenerator.SyntaxHighlighting
         /// <summary>
         /// Customize syntax highlighting for specific lexer rules.
         /// </summary>
+        [Snippet("rule settings",
+            "adds syntax highlighting options for some of the lexer rules in the grammar",
+            """
+            {
+              "SOME_STRING": { "TextMateScopeName": "string" },
+              "MAGIC_COMMENT": { "TextMateScopeName": "comment" },
+              "'continue'": { "TextMateScopeName": "keyword.control" }
+            }
+            """)]
         public IReadOnlyDictionary<string, RuleOptions>? RuleSettings { get; init; }
     }
 

@@ -73,7 +73,7 @@ var generateConfigSchemaCommand = new Command("dtgConfigSchema",
 generateConfigSchemaCommand.SetHandler(GenerateConfigSchema, outputArg);
 
 var generateCommand = new Command("generate",
-    "runs all configured generators") {
+    "runs all configured generators (by default) - use the subcommands to run a specific generator") {
         generateAstCommand,
         generateLanguageServerCommand,
         generateTextMateGrammarCommand,
@@ -88,9 +88,14 @@ var watchCommand = new Command("watch",
 watchCommand.SetHandler(() =>
     InitializePipeline(watchForChanges: true).RunEnabledGenerators());
 
+var initCommand = new Command("init",
+    $"creates a new DTG configuration file ({DefaultConfigFileName}) in the current directory");
+initCommand.SetHandler(() => GenerateConfigFile(new FileInfo(DefaultConfigFileName)));
+
 var rootCommand = new RootCommand("DSL Tools Generator") {
     generateCommand,
     watchCommand,
+    initCommand,
 };
 
 return await rootCommand.InvokeAsync(args);
@@ -142,7 +147,7 @@ async Task<int> GenerateAstCodeFromGrammarFile(
     var model = generator.GenerateAstCodeModel();
 
     FileStream? fileStream = null;
-    if (outputFile != null && !TryOpenWrite(outputFile, out fileStream))
+    if (outputFile != null && !TryOpenWrite(outputFile, overwrite: true, out fileStream))
         return 1;
 
     await using var writer = CreateOutputWriter(fileStream);
@@ -157,7 +162,7 @@ async Task<int> GenerateLanguageServer(
     Grammar grammar, Configuration config, FileInfo? outputFile)
 {
     FileStream? fileStream = null;
-    if (outputFile != null && !TryOpenWrite(outputFile, out fileStream))
+    if (outputFile != null && !TryOpenWrite(outputFile, overwrite: true, out fileStream))
         return 1;
 
     await using var writer = CreateOutputWriter(fileStream);
@@ -174,7 +179,7 @@ async Task<int> GenerateTextMateGrammar(
     Grammar grammar, Configuration config, FileInfo? outputFile, bool verbose)
 {
     FileStream? fileStream = null;
-    if (outputFile != null && !TryOpenWrite(outputFile, out fileStream))
+    if (outputFile != null && !TryOpenWrite(outputFile, overwrite: true, out fileStream))
         return 1;
 
     await using var _ = fileStream;
@@ -222,7 +227,7 @@ Task<int> GenerateVscodeExtension(Grammar grammar, Configuration config)
         return Task.FromResult(1); // we assume an error has been reported by FromConfig
 
     generator.GenerateExtension(file => {
-        if (TryOpenWrite(file, out FileStream? fileStream))
+        if (TryOpenWrite(file, overwrite: true, out FileStream? fileStream))
             return new IndentedTextWriter(CreateOutputWriter(fileStream));
         return null;
     });
@@ -320,14 +325,16 @@ bool TryParseGrammarAndReportErrors(IFileInfo grammarFile,
     return true;
 }
 
-bool TryOpenWrite(FileInfo file, [NotNullWhen(true)] out FileStream? stream,
+bool TryOpenWrite(FileInfo file, bool overwrite, [NotNullWhen(true)] out FileStream? stream,
     bool createDirectory = true)
 {
     try
     {
         if (createDirectory)
             file.Directory?.Create();
-        stream = file.Create(); // create or replace if it exists
+        stream = overwrite
+            ? file.Create() // create or replace if it exists
+            : file.Open(FileMode.CreateNew, FileAccess.Write); // fail if exists
         return true;
     }
     catch (IOException ex)
@@ -344,7 +351,8 @@ StreamWriter CreateOutputWriter(Stream? stream) => stream is null
 
 async Task<int> GenerateConfigSchema(FileInfo? outputFile)
 {
-    var settings = new SystemTextJsonSchemaGeneratorSettings {
+    var settings = new SystemTextJsonSchemaGeneratorSettings
+    {
         SchemaProcessors = {
             new MarkdownDescriptionSchemaProcessor(),
             new DefaultSnippetsSchemaProcessor(),
@@ -358,11 +366,31 @@ async Task<int> GenerateConfigSchema(FileInfo? outputFile)
     schema.ExtensionData["allowComments"] = true;
 
     FileStream? fileStream = null;
-    if (outputFile != null && !TryOpenWrite(outputFile, out fileStream))
+    if (outputFile != null && !TryOpenWrite(outputFile, overwrite: true, out fileStream))
         return 1;
 
     await using var writer = CreateOutputWriter(fileStream);
     writer.WriteLine(schema.ToJson());
+    return 0;
+}
+
+async Task<int> GenerateConfigFile(FileInfo outputFile)
+{
+    if (!TryOpenWrite(outputFile, overwrite: false, out FileStream? fileStream))
+        return 1;
+
+    _ = await GenerateConfigSchema(new FileInfo($"{outputFile.DirectoryName}/dtg.schema.json"));
+
+    var generator = new ConfigFileGenerator {
+        // TODO: attempt to automatically discover the values or ask the user
+        LanguageId = new("abc"),
+        CsprojName = null,
+        GrammarFile = null,
+    };
+    string contents = generator.Generate();
+    await using var writer = CreateOutputWriter(fileStream);
+    await writer.WriteAsync(contents);
+    Console.Error.WriteLine($"Configuration file created at `{outputFile.FullName}`");
     return 0;
 }
 
@@ -385,7 +413,12 @@ static Configuration? LoadConfiguration(IFileInfo file, bool warnIfNotFound = fa
     catch (FileNotFoundException)
     {
         if (warnIfNotFound)
-            Console.Error.WriteLine($"Warning: No configuration file ({DefaultConfigFileName}) found.");
+        {
+            Console.Error.WriteLine($"""
+                Warning: No configuration file ({DefaultConfigFileName}) found.
+                         Run `dtg init` to create one.
+                """);
+        }
     }
     catch (Exception ex)
     {

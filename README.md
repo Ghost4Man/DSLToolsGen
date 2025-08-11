@@ -1,4 +1,4 @@
-﻿# DSL Tools Generator
+# DSL Tools Generator
 
 This is a project aimed at simplifying the development of domain-specific languages by generating parts of their implementation (e.g. AST) and tools for using the language in an editor like VSCode (e.g. LSP server and editor extensions with syntax highlighting) based on an ANTLR4 grammar and a DSL config file.
 
@@ -136,6 +136,7 @@ It it still looks wrong, open the TextMate Scope Inspector in VSCode and look at
         "AntlrCommand": "java -jar T:\\Antlr\\antlr-4.13.1-complete.jar"
     },
     "VscodeExtension": {
+        "OutputDirectory": "vscode-extension",
         "ExtensionId": "dtgtest.avroidl",
         "ExtensionDisplayName": "AvroIDL",
     },
@@ -143,7 +144,6 @@ It it still looks wrong, open the TextMate Scope Inspector in VSCode and look at
         "Namespace": "AvroIDL.LanguageServer"
     }
 }
-
 ```
 
 ## Dependencies

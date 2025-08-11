@@ -112,7 +112,16 @@ GeneratorPipeline InitializePipeline(bool watchForChanges)
                 await GenerateLanguageServer(g, c, new FileInfo(outputPath));
         }),
         new TmLanguageGeneratorRunner(async (g, c) => {
-            if (checkConfigValueIsPresent(c.SyntaxHighlighting.OutputPath, out var outputPath))
+            // Check if the output path is set in the config,
+            // or, if the VscodeExtension is enabled,
+            // use the default path in the extension's `syntaxes` directory.
+            string languageId = c.LanguageId ?? c.GetFallbackLanguageId(g);
+            string? outputPath = c.SyntaxHighlighting.OutputPath ??
+                (c.VscodeExtension is { } vsce
+                    ? $"{vsce.OutputDirectory}/syntaxes/{languageId}.tmLanguage.json"
+                    : null);
+            if (checkConfigValueIsPresent(outputPath, out _,
+                    $"{nameof(c.SyntaxHighlighting)}.{nameof(c.SyntaxHighlighting.OutputPath)}"))
                 await GenerateTextMateGrammar(g, c, new FileInfo(outputPath), verbose: false);
         }),
         new VscodeExtensionGeneratorRunner(async (g, c) => {
@@ -125,7 +134,9 @@ GeneratorPipeline InitializePipeline(bool watchForChanges)
                 await RunAntlr(g, c, command, outputPath);
         }));
 
-    bool checkConfigValueIsPresent<T>(T value, [NotNullWhen(true)] out T? valueIfPresent,
+    bool checkConfigValueIsPresent<T>(
+        [NotNullWhen(true)] T value,
+        [NotNullWhen(true)] out T? valueIfPresent,
         [CallerArgumentExpression(nameof(value))] string configValueName = null!)
     {
         return Configuration.CheckValuePresent(value, out valueIfPresent,

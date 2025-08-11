@@ -49,9 +49,13 @@ public class ConfigFileGenerator
               "AntlrCommand": "java -jar D:\\Antlr\\antlr-4.13.1-complete.jar"
             },
             "SyntaxHighlighting": {
-              "OutputPath": "vscode-extension/syntaxes/{{LanguageId}}.tmLanguage.json"
+              // The default path is "syntaxes/{LanguageId}.tmLanguage.json"
+              //    within the VSCode extension directory
+              //"OutputPath": "./tmgrammars/{{LanguageId}}.tmLanguage.json"
+
+              // To customize the syntax highlighting, tweak RuleSettings and RuleConflicts
             },
-            "VscodeExtension": {  
+            "VscodeExtension": {
               "OutputDirectory": "vscode-extension",
               "ExtensionId": "YOURNAME.{{LanguageId.Value.ToLowerInvariant()}}",
               "ExtensionDisplayName": "{{LanguageId}}"

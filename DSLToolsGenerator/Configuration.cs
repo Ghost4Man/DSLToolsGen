@@ -293,6 +293,11 @@ namespace DSLToolsGenerator.SyntaxHighlighting
 {
     public record SyntaxHighlightingConfiguration
     {
+        /// <summary>
+        /// Specifies where to store the TextMate grammar for syntax highlighting.
+        /// The default path is <c>syntaxes/{LanguageId}.tmLanguage.json</c>
+        /// within the VSCode extension directory.
+        /// </summary>
         public string? OutputPath { get; init; }
 
         public IReadOnlyList<RuleConflict> RuleConflicts { get; init; } = [];

@@ -37,10 +37,7 @@ public class ConfigFileGenerator
             },
             "AST": {
               "OutputPath": "AST.g.cs",
-              "Namespace": "{{languageNamePascalCase}}.AST",
-              // Choose a suitable class name for the root node of the generated AST
-              // ("CompilationUnit", "{{languageNamePascalCase}}Document", etc.)
-              "RootNodeClass": "{{languageNamePascalCase}}File"
+              "Namespace": "{{languageNamePascalCase}}.AST"
             },
             "LanguageServer": {
               "OutputPath": "LanguageServer.g.cs",

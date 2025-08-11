@@ -87,7 +87,8 @@ Detailed steps for adding DTG-generated tools into a C# project:
             XyzParser parser, IList<Diagnostic> diagnostics)
         {
             // Convert parse tree to AST
-            var ast = new AstBuilder().VisitIdlFile(parser.idlFile());
+            // TODO: replace `xyzFile` with the actual rule name from your grammar
+            var ast = new AstBuilder().VisitXyzFile(parser.xyzFile());
 
             // Here you can perform any additional semantic analysis,
             // add errors and warnings to `diagnostics`,

@@ -202,7 +202,10 @@ namespace DSLToolsGenerator.AST
         public ClassNamingOptions NodeClassNaming { get; init; } = new();
 
         /// <summary>
-        /// Class name of the AST's root node, e.g. <c>"ProgramNode"</c>.
+        /// Specifies which class of the AST is considered the root node,
+        /// e.g. <c>"ProgramNode"</c>. This is used as the type of the
+        /// <c>Document.Ast</c> property in the generated language server code.
+        /// If not specified, the <c>AstNode</c> base class is used.
         /// </summary>
         public IdentifierString? RootNodeClass { get; init; }
 

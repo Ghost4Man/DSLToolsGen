@@ -1,4 +1,4 @@
-﻿using Antlr4Ast;
+using Antlr4Ast;
 
 using NSourceGenerators;
 
@@ -469,6 +469,16 @@ public class LanguageServerGenerator
         """);
 
     public void GenerateDocumentClass() => Output.WriteCode($$"""
+        /// <summary>
+        /// Represents a single document in the {{LanguageId}} language.
+        /// </summary>
+        /// <param name="Text">The full contents of the document.</param>
+        /// <param name="Ast">The root node of the abstract syntax tree (AST) for this document.
+        {{(AstRootNodeClassName == AstNodeBaseClassName
+            ? "///     <para>TIP: for more type safety, configure AST.RootNodeClass in `dtg.json`</para>"
+            : null)}}
+        /// </param>
+        /// <param name="Parser">The <see cref="{{ParserClassName}}"/> instance used to parse this document.</param>
         public partial record Document(string Text, AstRootNode Ast, {{ParserClassName}} Parser)
         {
             /// <summary>

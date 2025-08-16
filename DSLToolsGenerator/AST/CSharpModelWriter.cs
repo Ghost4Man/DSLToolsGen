@@ -11,7 +11,7 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
 {
     public CSharpModelWriter(TextWriter output) : base(output) { }
 
-    public required DottedIdentifierString? AntlrNamespace { get; init; }
+    public required DottedIdentifierString? ParserNamespace { get; init; }
     public required DottedIdentifierString? Namespace { get; init; }
 
     string TypeName(string typeName, bool nullable) => typeName + (nullable ? "?" : "");
@@ -72,7 +72,7 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
             using System;
             using System.Linq;
             using System.Collections.Generic;
-            {{(AntlrNamespace?.Value is string antlrNS ? $"using {antlrNS};" : null)}}
+            {{(ParserNamespace?.Value is string parserNS ? $"using {parserNS};" : null)}}
 
             {{(Namespace?.Value is string ns ? $"namespace {ns};" : null)}}
 
@@ -378,7 +378,7 @@ public class CSharpModelWriter : CodeGeneratingModelVisitor
     {
         return new CSharpModelWriter(output) {
             Namespace = config.Ast.Namespace,
-            AntlrNamespace = config.Parser.Namespace,
+            ParserNamespace = config.Parser.Namespace,
         };
     }
 }

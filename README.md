@@ -1,16 +1,17 @@
 # DSL Tools Generator
 
-This is a project aimed at simplifying the development of domain-specific languages by generating parts of their implementation (e.g. AST) and tools for using the language in an editor like VSCode (e.g. LSP server and editor extensions with syntax highlighting) based on an ANTLR4 grammar and a DSL config file.
+This is a project aimed at simplifying the development of domain-specific languages by **generating parts of their implementation** (e.g. **AST**) and tools for using the language in an editor like VSCode (e.g. **LSP server** and **editor extensions** with **syntax highlighting**) based on an **ANTLR4 grammar** and a DSL **config file** that allows further customization.
 
 ## Generators
 
-- **Syntax Highlighting** – outputs a `.tmLanguage.json` file, which contains a TextMate grammar for syntax highlighting supported by many editors, including VSCode.
+- **Syntax Highlighting** – generates a `.tmLanguage.json` file, which contains a TextMate grammar for syntax highlighting supported by many editors, including VSCode.
 
 - **AST** – generates C# source code of AST node classes (as `record`s) and an `AstBuilder` class, which is a Visitor implementation that transforms parse trees (output by ANTLR-generated parsers) into ASTs ready for further analysis, validation and transformations.
 
-- **VSCode Extension**
+- **Language Server** – generates a C# class that implements a basic LSP (Language Server Protocol) server for the language, which can be used to provide features like live diagnostics, code completion, hover information, etc.
 
-- **Language Server**
+- **VSCode Extension** – generates a ready-to-run VSCode extension that uses the generated TextMate grammar for syntax highlighting and provides integration with the language server.
+    - includes an AST Explorer tree view (optional)
 
 ## Usage
 
@@ -126,24 +127,26 @@ It it still looks wrong, open the TextMate Scope Inspector in VSCode and look at
         "VscodeExtension": false,
     },
     "AST": {
+        "OutputPath": "AST.g.cs",
         "Namespace": "AvroIDL.AST",
     },
-    "SyntaxHighlighting": {
-        "OutputPath": "vscode-extension/syntaxes/AvroIDL.tmLanguage.json",
+    "LanguageServer": {
+        "OutputPath": "LanguageServer.g.cs",
+        "Namespace": "AvroIDL.LanguageServer",
     },
     "Parser": {
         "OutputDirectory": "Parser",
         "Namespace": "AvroIDL.Parser",
-        "AntlrCommand": "java -jar T:\\Antlr\\antlr-4.13.1-complete.jar"
+        "AntlrCommand": "java -jar ./antlr/antlr-4.13.1-complete.jar",
+    },
+    "SyntaxHighlighting": {
+        "OutputPath": "vscode-extension/syntaxes/AvroIDL.tmLanguage.json",
     },
     "VscodeExtension": {
         "OutputDirectory": "vscode-extension",
         "ExtensionId": "dtgtest.avroidl",
         "ExtensionDisplayName": "AvroIDL",
     },
-    "LanguageServer": {
-        "Namespace": "AvroIDL.LanguageServer"
-    }
 }
 ```
 

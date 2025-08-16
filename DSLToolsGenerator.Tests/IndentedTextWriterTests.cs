@@ -1,4 +1,4 @@
-﻿namespace DSLToolsGenerator.Tests;
+namespace DSLToolsGenerator.Tests;
 
 public class IndentedTextWriterTests
 {
@@ -211,6 +211,22 @@ public class IndentedTextWriterTests
             one
 
             two
+
+            """, output.ToString());
+    }
+
+    [Fact]
+    public void when_given_leading_empty_action___WriteCode_removes_extra_empty_line()
+    {
+        (var writer, StringWriter output) = CreateNew();
+
+        writer.WriteCode($$"""
+            {{_ => { }}}
+            one
+            """);
+
+        Assert.Equal("""
+            one
 
             """, output.ToString());
     }

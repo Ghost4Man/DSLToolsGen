@@ -1,4 +1,4 @@
-﻿using System.Numerics;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 
 namespace DSLToolsGenerator;
@@ -103,7 +103,7 @@ public ref struct AutoIndentStringHandler(IndentedTextWriter writer)
         : this(writer) { }
 
     int temporaryInterpolationIndentation;
-    int prefixNewlinesToTrim;
+    int prefixNewlinesToTrim = int.MaxValue;
 
     public void AppendLiteral(ReadOnlySpan<char> s)
     {
@@ -111,9 +111,12 @@ public ref struct AutoIndentStringHandler(IndentedTextWriter writer)
 
         for (int i = 0; i < prefixNewlinesToTrim; i++)
         {
+            int oldLength = s.Length;
             s = s is ['\n', .. var rest] ? rest :
                 s is ['\r', '\n', .. var rest2] ? rest2 :
                 s;
+            if (s.Length == oldLength) // stop if no newline was removed
+                break;
         }
 
         var lastLine = GetLastLine(s);

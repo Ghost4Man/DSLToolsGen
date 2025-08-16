@@ -1,4 +1,4 @@
-﻿using Antlr4Ast;
+using Antlr4Ast;
 
 using VisitorPatternGenerator;
 
@@ -20,10 +20,10 @@ public partial record AstCodeModel(IList<NodeClassModel> NodeClasses, AstBuilder
 }
 
 [Acceptor<IModel>]
-public abstract partial record PropertyModel(string Name, ValueMappingSource Source) : IModel;
+public abstract partial record PropertyModel(string Name, ContextChildAccess Source) : IModel;
 
 [Acceptor<IModel>]
-public partial record NodeReferencePropertyModel(string Name, ValueMappingSource Source,
+public partial record NodeReferencePropertyModel(string Name, ContextChildAccess Source,
     // The Lazy is needed so that we don't get stuck while
     // fetching references to self (or mutual rule references).
     // This assumes we only access the NodeClass property after all NodeClasses are generated
@@ -32,20 +32,20 @@ public partial record NodeReferencePropertyModel(string Name, ValueMappingSource
     ) : PropertyModel(Name, Source);
 
 [Acceptor<IModel>]
-public partial record NodeReferenceListPropertyModel(string Name, ValueMappingSource Source,
+public partial record NodeReferenceListPropertyModel(string Name, ContextChildAccess Source,
     Lazy<NodeClassModel> NodeClass) : PropertyModel(Name, Source);
 
 [Acceptor<IModel>]
-public partial record TokenTextPropertyModel(string Name, ValueMappingSource Source,
-    ResolvedTokenRef Token, bool Optional) : PropertyModel(Name, Source);
+public partial record TokenTextPropertyModel(string Name, ContextChildAccess Source,
+    bool Optional) : PropertyModel(Name, Source);
 
 [Acceptor<IModel>]
-public partial record TokenTextListPropertyModel(string Name, ValueMappingSource Source,
-    ResolvedTokenRef Token) : PropertyModel(Name, Source);
+public partial record TokenTextListPropertyModel(string Name, ContextChildAccess Source)
+    : PropertyModel(Name, Source);
 
 [Acceptor<IModel>]
-public partial record OptionalTokenPropertyModel(string Name, ValueMappingSource Source,
-    ResolvedTokenRef Token) : PropertyModel(Name, Source);
+public partial record OptionalTokenPropertyModel(string Name, ContextChildAccess Source)
+    : PropertyModel(Name, Source);
 
 [Acceptor<IModel>]
 public partial record NodeClassModel(string Name, Rule ParserRule, Alternative? SourceAlt, IList<PropertyModel> Properties) : IModel
@@ -100,12 +100,39 @@ public partial record AstBuilderModel(string AntlrGrammarName, string ParserClas
 public record AstMappingModel(Rule Rule, NodeClassModel Ast);
 
 /// <summary>
-/// Describes how to get a value for a property of the AST from the parse tree.
+/// Describes a way to access a specific child node of a <c>ParserRuleContext</c>.
 /// </summary>
-public abstract record ValueMappingSource
+public abstract record ContextChildAccess
 {
-    private ValueMappingSource() { }
+    private ContextChildAccess() { }
 
-    public sealed record FromLabel(string Label, LabelKind Kind) : ValueMappingSource;
-    public sealed record FromGetter(int? Index = null) : ValueMappingSource;
+    public sealed record ByLabel(string Label, LabelKind Kind) : ContextChildAccess;
+    public sealed record Getter(string RuleOrTokenName, int? Index = null) : ContextChildAccess;
+
+    /// <summary>
+    /// Access an unnamed token (from an implicit literal in the grammar),
+    /// e.g. <c>'if'</c> without a corresponding <c>IF : 'if' ;</c> rule.
+    /// </summary>
+    /// <param name="LiteralValue">The actual value represented by the literal, without single quotes and escape sequences.
+    ///     See <see cref="LiteralExtensions.GetUnescapedValue(Literal)"/>.</param>
+    public sealed record ByText(string LiteralValue, int? Index = null) : ContextChildAccess;
+
+    public static ContextChildAccess For(SyntaxElement element, string ruleOrTokenName, bool list)
+    {
+        if (element.Label is not null)
+            return new ByLabel(element.Label, element.LabelKind);
+
+        return (element, ruleOrTokenName) switch {
+            (_, not null) => new Getter(ruleOrTokenName, getElementMappingIndex()),
+            (Literal literal, _) => new ByText(literal.GetUnescapedValue(), getElementMappingIndex()),
+            _ => throw new ArgumentNullException(nameof(ruleOrTokenName)),
+        };
+
+        // e.g. emit code like `context.expr()` instead of `context.expr(0)`
+        // if the element is the only reference to the `expr` rule in `context`
+        // or is part of a delimited list like `expr (',' expr)+`
+        int? getElementMappingIndex() => (list || element.IsOnlyOfType())
+            ? null
+            : element.GetElementIndex().IndexByType;
+    }
 }

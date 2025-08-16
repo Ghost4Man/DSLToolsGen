@@ -1,4 +1,4 @@
-﻿using static DSLToolsGenerator.AST.CSharpModelWriter;
+using static DSLToolsGenerator.AST.CSharpModelWriter;
 
 namespace DSLToolsGenerator.AST.Tests;
 
@@ -90,6 +90,22 @@ public class AstCodeGeneratorTests(ITestOutputHelper testOutput) : CodegenTestFi
             {
                 public static TOut Accept<TIn, TOut>(this TIn parseTreeNode, Func<TIn, TOut> visitFn)
                     => visitFn(parseTreeNode);
+
+                public static Antlr4.Runtime.IToken? GetTokenByText(this Antlr4.Runtime.ParserRuleContext context, string tokenText, int index)
+                {
+                    int found = 0;
+                    foreach (var child in context.children)
+                    {
+                        if (child is Antlr4.Runtime.Tree.ITerminalNode { Symbol: { } token }
+                            && token.Text == tokenText)
+                        {
+                            if (found == index)
+                                return token;
+                            found++;
+                        }
+                    }
+                    return null;
+                }
             }
             """,
             ModelToString(g.GenerateAstCodeModel()).TrimEnd());

@@ -1,4 +1,4 @@
-﻿using static DSLToolsGenerator.AST.CSharpModelWriter;
+using static DSLToolsGenerator.AST.CSharpModelWriter;
 
 namespace DSLToolsGenerator.AST.Tests;
 
@@ -466,6 +466,53 @@ public class AstCodeGeneratorTests_Mapping(ITestOutputHelper testOutput) : Codeg
                 {{visitMethodForSimpleIdExpression}}
             }
             """,
+            ModelToString(g.GenerateAstCodeModel().AstBuilder).TrimEnd());
+    }
+
+    [Fact]
+    public void given_rule_with_unlabeled_alts_ー_distinguishes_alts_by_properties_and_literals()
+    {
+        AstCodeGenerator g = GetGeneratorForGrammar($$"""
+            {{grammarProlog}}
+            DOLLAR : '$';
+            stmt : var=ID '=' NUMBER ';'
+                 | expr '(' ')' ';'
+                 | 'print' STR_LIT ';'
+                 | DOLLAR ';'
+                 ;
+            expr : ID ;
+            """);
+        Assert.Equal($$""""
+            public class AstBuilder : FooBaseVisitor<AstNode>
+            {
+                {{expectedAstBuilderProlog}}
+
+                public override Statement VisitStmt(FooParser.StmtContext? context)
+                {
+                    if (context is null) return Statement.Missing;
+
+                    var Variable = context.var?.Text ?? MissingTokenPlaceholderText;
+                    var Number = context.NUMBER()?.GetText() ?? MissingTokenPlaceholderText;
+                    if (context.var is not null)
+                        return new Statement_0(Variable, Number) { ParserContext = context };
+
+                    var Expression = VisitExpr(context.expr());
+                    if (Expression is not (null or { IsMissing: true }))
+                        return new Statement_1(Expression) { ParserContext = context };
+
+                    var StringLiteral = context.STR_LIT()?.GetText() ?? MissingTokenPlaceholderText;
+                    if (context.GetTokenByText("""print""", 0) is not null)
+                        return new Statement_2(StringLiteral) { ParserContext = context };
+
+                    if (context.DOLLAR() is not null)
+                        return new Statement_3() { ParserContext = context };
+
+                    return Statement.Missing;
+                }
+
+                {{visitMethodForSimpleIdExpression}}
+            }
+            """",
             ModelToString(g.GenerateAstCodeModel().AstBuilder).TrimEnd());
     }
 }

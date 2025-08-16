@@ -193,7 +193,7 @@ public partial class AstCodeGenerator
             {
                 Lazy<NodeClassModel> nodeClass = new(() => FindOrGenerateAstNodeClass(rule));
                 string propertyName = makePropertyName(element, rule.Name, list: isRepeated);
-                var mappingSource = CreateMappingSource(element, list: isRepeated);
+                var mappingSource = ContextChildAccess.For(element, rule.Name, list: isRepeated);
                 return [isRepeated
                     ? new NodeReferenceListPropertyModel(propertyName, mappingSource, nodeClass)
                     : new NodeReferencePropertyModel(propertyName, mappingSource, nodeClass, isOptional)];
@@ -210,10 +210,10 @@ public partial class AstCodeGenerator
         {
             ResolvedTokenRef resolvedTokenRef = Resolve(tokenRef);
             string propertyName = makePropertyName(element, tokenRef.Name, list: isRepeated);
-            var mappingSource = CreateMappingSource(element, list: isRepeated);
+            var mappingSource = ContextChildAccess.For(element, tokenRef.Name, list: isRepeated);
             return [isRepeated
-                ? new TokenTextListPropertyModel(propertyName, mappingSource, resolvedTokenRef)
-                : new TokenTextPropertyModel(propertyName, mappingSource, resolvedTokenRef, isOptional)];
+                ? new TokenTextListPropertyModel(propertyName, mappingSource)
+                : new TokenTextPropertyModel(propertyName, mappingSource, isOptional)];
         }
         else if (element is TokenRef or Literal
             && element.IsOptional()
@@ -231,8 +231,7 @@ public partial class AstCodeGenerator
                 Name: propertyName.StartsWithAny("Is", "Has", "Does", "Do", "Should", "Can", "Will")
                         ? propertyName
                         : $"Is{propertyName}",
-                Source: CreateMappingSource(element, list: isRepeated),
-                Token: resolvedToken
+                Source: new ContextChildAccess.ByLabel(element.Label, element.LabelKind)
             )];
         }
         else if (element is Block block) // recurse into blocks (`((a) | b)*`)
@@ -263,20 +262,6 @@ public partial class AstCodeGenerator
             else
                 return propName;
         }
-    }
-
-    public static ValueMappingSource CreateMappingSource(SyntaxElement element, bool list)
-    {
-        return element.Label is not null
-            ? new ValueMappingSource.FromLabel(element.Label, element.LabelKind)
-            : new ValueMappingSource.FromGetter(getElementMappingIndex());
-
-        // e.g. emit code like `context.expr()` instead of `context.expr(0)`
-        // if the element is the only reference to the `expr` rule in `context`
-        // or is part of a delimited list like `expr (',' expr)+`
-        int? getElementMappingIndex() => (list || element.IsOnlyOfType())
-            ? null
-            : element.GetElementIndex().IndexByType;
     }
 
     bool RuleOrTokenRefsAreEqual(SyntaxElement first, SyntaxElement second)
@@ -336,7 +321,7 @@ public partial class AstCodeGenerator
 
                 // If the properties are mapped from a labeled element,
                 // merge them into a single property
-                if (duplicateProperties[0].Source is ValueMappingSource.FromLabel source)
+                if (duplicateProperties[0].Source is ContextChildAccess.ByLabel source)
                 {
                     Debug.Assert(duplicateProperties.All(p => p.Source == source),
                         "found multiple properties with same name but different mapping source");

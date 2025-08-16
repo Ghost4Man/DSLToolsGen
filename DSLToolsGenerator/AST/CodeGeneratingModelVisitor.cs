@@ -1,4 +1,4 @@
-﻿using DSLToolsGenerator.AST.Models;
+using DSLToolsGenerator.AST.Models;
 
 namespace DSLToolsGenerator.AST;
 
@@ -11,13 +11,15 @@ public abstract class CodeGeneratingModelVisitor(TextWriter output) : IModelVisi
 
     public void VisitAll<TModel>(IEnumerable<TModel> models, Action? separatorAction, Action<TModel> visitAction)
     {
-        bool first = true;
+        bool writeSeparator = false;
         foreach (TModel model in models)
         {
-            if (!first)
+            if (writeSeparator)
                 separatorAction?.Invoke();
+            var before = (Output.CurrentLine, Output.CurrentColumn);
             visitAction(model);
-            first = false;
+            var after = (Output.CurrentLine, Output.CurrentColumn);
+            writeSeparator = after != before; // only write separator if the visitAction actually wrote something
         }
     }
 

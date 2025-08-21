@@ -250,7 +250,6 @@ async Task<int> RunAntlr(Grammar grammar, Configuration config, string command, 
 {
     // split to (for example): ["java", "-jar", "antlr.jar"]
     var commandParts = new Parser().Parse(command).Tokens.Select(t => t.Value).ToList();
-    //string[] commandParts = command.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
     string?[] grammarPaths = [
         grammar.GetLexerGrammarFile()?.FullName,
         config.GrammarFile! // we know grammar is not null, so GrammarFile must be non-null too
@@ -260,6 +259,7 @@ async Task<int> RunAntlr(Grammar grammar, Configuration config, string command, 
         "-o", outputDirectory,
         "-Dlanguage=CSharp",
         ..(config.Parser.Namespace is { } ns ? ["-package", ns] : Array.Empty<string>()),
+        "-encoding", "utf-8",
     ];
     await Console.Error.WriteLineAsync(AnsiColors.Gray +
         $"Launching process `{commandParts[0]}`" +
@@ -267,11 +267,6 @@ async Task<int> RunAntlr(Grammar grammar, Configuration config, string command, 
         + AnsiColors.Default);
     try
     {
-        //ProcessStartInfo startInfo = new(commandParts[0], commandParts.ElementAtOrDefault(1) ?? "");
-
-        //foreach (string arg in args)
-        //    startInfo.ArgumentList.Add(arg);
-        //var process = Process.Start(commandParts[0], args);
         var process = Process.Start(commandParts[0], args);
         await process.WaitForExitAsync();
         return process.ExitCode;

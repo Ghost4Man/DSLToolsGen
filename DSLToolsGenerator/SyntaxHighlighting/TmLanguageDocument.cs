@@ -1,4 +1,5 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace DSLToolsGenerator.SyntaxHighlighting;
 
@@ -129,6 +130,7 @@ public record Pattern(
     Dictionary<string, Capture>? BeginCaptures = null,
     string? End = null,
     Dictionary<string, Capture>? EndCaptures = null,
+    [property: JsonConverter(typeof(BoolAsIntConverter))]
     bool? ApplyEndPatternLast = null,
     string? ContentName = null,
     string? While = null,
@@ -145,3 +147,15 @@ public record Pattern(
 ///     This should generally be derived from one of the standard names.</param>
 /// <param name="Patterns">Yes, captures can be further matched against additional patterns, too.</param>
 public record Capture(string? Name, IReadOnlyList<Pattern>? Patterns);
+
+public class BoolAsIntConverter : JsonConverter<bool>
+{
+    public override void Write(Utf8JsonWriter writer, bool value, JsonSerializerOptions options)
+        => writer.WriteNumberValue(value ? 1 : 0);
+
+    public override bool Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        => (reader.TokenType == JsonTokenType.Number
+            && reader.TryGetInt32(out int value))
+            ? value != 0
+            : throw new JsonException("Expected a 0 or 1.");
+}

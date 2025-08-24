@@ -133,7 +133,7 @@ public partial class TmLanguageGenerator
     [GeneratedRegex("""(?<!NON_?)COMMENT$""", RegexOptions.IgnoreCase)]
     private partial Regex CommentPattern();
 
-    [GeneratedRegex("""^(?:(STR(ING)?|TE?XT|CHR|CHAR(ACTER)?)(_?(LIT(ERAL)?|CONST(ANT)?))?)$""", RegexOptions.IgnoreCase)]
+    [GeneratedRegex("""^(?:((.+_|RAW)?STR(ING)?|TE?XT|CHR|CHAR(ACTER)?)(_?(LIT(ERAL)?|CONST(ANT)?))?)$""", RegexOptions.IgnoreCase)]
     private partial Regex StringLiteralPattern();
 
     string GetScopeNameForRule(Rule rule)

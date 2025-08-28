@@ -1,4 +1,4 @@
-﻿using Humanizer;
+using Humanizer;
 using Antlr4Ast;
 
 namespace DSLToolsGenerator.Tests;
@@ -174,5 +174,26 @@ public class GrammarExtensionsTests
             })
             .WhereNotNull();
         Assert.Equal(checks.Select(c => c.expected), checks.Select(c => c.actual));
+    }
+
+    [Theory]
+    [InlineData(""" 'abc\ndef' """)]
+    [InlineData(""" 'abc' '\r'? '\n' 'def' """)]
+    [InlineData(""" [\r\n\t] """)]
+    [InlineData(""" ~[abc] """)]
+    [InlineData(""" (~["])* """)]
+    [InlineData(""" ('foo' | .)+ """)]
+    [InlineData(""" ~'a' """)]
+    public void given_lexer_rule_that_matches_newline_ー_CanSpanMultipleLines_returns_true(string elements)
+    {
+        var grammar = Grammar.Parse($$"""
+            lexer grammar Example;
+            FOO : {{elements}} ;
+            """);
+        grammar.Analyze();
+        Assert.Empty(grammar.ErrorMessages);
+        Assert.True(grammar.TryGetRule("FOO", out Rule? rule));
+        Alternative alt = rule.GetAlts().Single();
+        Assert.Contains(alt.Elements, e => e.CanSpanMultipleLines(grammar));
     }
 }

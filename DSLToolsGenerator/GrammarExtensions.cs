@@ -1,4 +1,4 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
@@ -436,6 +436,7 @@ static class SyntaxElementExtensions
     public static void Deconstruct(this RuleRef ruleRef, out string name) => name = ruleRef.Name;
     public static void Deconstruct(this Literal literal, out string value) => value = literal.GetUnescapedValue();
     public static void Deconstruct(this LexerCharSet charSet, out string value) => value = charSet.GetUnescapedValue();
+    public static void Deconstruct(this CharRange range, out int start, out int end) => (start, end) = range.GetCharacterRange();
 }
 
 static class LiteralExtensions
@@ -462,9 +463,73 @@ static class LiteralExtensions
     /// <summary>
     /// Evaluates the contents of this character set including any escape
     /// sequences into the actual characters they represent.
+    /// <para>
+    /// This method does NOT evaluate ranges and Unicode properties
+    /// (<c>\p{Symbol}</c>, <c>\P{Lu}</c>, etc.) within the character set,
+    /// e.g. for <c>[a-zA-Z0-9]</c> it will return <c>a-zA-Z0-9</c>.
+    /// </para>
     /// </summary>
     public static string GetUnescapedValue(this LexerCharSet charSet)
         => EvaluateEscapeSequencesInAntlrStringLiteral(charSet.Value);
+
+    /// <summary>
+    /// Evaluates the contents of the literals representing the
+    /// bounds of this character range including any escape
+    /// sequences into the actual characters they represent.
+    /// </summary>
+    public static (int from, int to) GetCharacterRange(this CharRange range)
+        => (from: EvaluateEscapeSequencesInAntlrCharacterLiteral(range.From),
+            to: EvaluateEscapeSequencesInAntlrCharacterLiteral(range.To));
+
+    public static bool Matches(this Literal literal, char c)
+    {
+        return (literal.GetUnescapedValue().Contains(c))
+            ^ literal.IsNot; // invert if the literal is negated
+    }
+
+    public static bool Matches(this LexerCharSet charSet, char c)
+    {
+        // TODO: handle ranges, Unicode properties, etc.
+        return charSet.GetUnescapedValue().Contains(c)
+            ^ charSet.IsNot; // invert if the set is negated
+    }
+
+    public static bool Matches(this CharRange range, int c)
+    {
+        (int from, int to) = range.GetCharacterRange();
+        return (c >= from && c <= to)
+            ^ range.IsNot; // invert if the range is negated
+    }
+
+    public static bool CanSpanMultipleLines(this Alternative alt, Grammar grammar)
+        => alt.Elements.Any(e => e.CanSpanMultipleLines(grammar));
+
+    public static bool CanSpanMultipleLines(this SyntaxElement element, Grammar grammar)
+    {
+        // A rule can span multiple lines if it contains
+        // a dot element, a literal or character set/range containing `\n`,
+        // or a token reference to a rule that can span multiple lines.
+        return element switch {
+            DotElement => true,
+            Literal l => l.Matches('\n'),
+            LexerCharSet s => s.Matches('\n'),
+            CharRange r => r.Matches('\n'),
+            TokenRef r when r.GetRuleOrNull(grammar) is Rule rule
+                => rule.AlternativeList.CanSpanMultipleLines(grammar),
+            AlternativeList { Items: var alts }
+                => alts.Any(a => CanSpanMultipleLines(a, grammar)),
+            _ => element.Children().OfType<SyntaxElement>()
+                .Any(e => CanSpanMultipleLines(e, grammar))
+        };
+    }
+
+    static int EvaluateEscapeSequencesInAntlrCharacterLiteral(string literalText)
+    {
+        string evaluated = EvaluateEscapeSequencesInAntlrStringLiteral(literalText);
+        return Rune.TryGetRuneAt(evaluated, 0, out Rune rune)
+            ? rune.Value
+            : evaluated[0];
+    }
 
     static string EvaluateEscapeSequencesInAntlrStringLiteral(string literalText)
     {
@@ -498,6 +563,7 @@ static class LiteralExtensions
                     output.Append(buffer[..charsWritten]);
                     rest = escRest[(extHexCode.Length + 1)..];
                 }
+                // TODO: verify behavior with \p{Symbol}, \P{Lu}, etc. (+ add tests)
                 else
                     rest = rest[1..];
             }

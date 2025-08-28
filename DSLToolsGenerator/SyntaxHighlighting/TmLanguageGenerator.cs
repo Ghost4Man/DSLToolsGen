@@ -77,15 +77,14 @@ public partial class TmLanguageGenerator
         // try to reorder the rules to fix the mismatch between
         // ANTLR's longest-match and TextMate's leftmost/eager match behavior
         patterns.AddRange(rulesToHighlight
-            .Select(r => (
-                pattern: new Pattern(
-                    Comment: $"rule {r.Name}",
-                    Match: MakeRegex(r, parentRules: []),
-                    Name: getFullScopeNameForRule(r)),
+            .SelectMany(r => createPatterns(r).Select(p => (
+                pattern: p,
                 priority: GetRulePriority(r)
-            ))
+            )))
             .OrderByDescending(p => p.priority)
-            .ThenByDescending(p => p.pattern.Match?.Length)
+            .ThenByDescending(p => p.pattern.Begin != null) // TODO: find a way to order these correctly
+            .ThenByDescending(p => p.pattern.Match?.Length
+                ?? (p.pattern.Begin?.Length + p.pattern.End?.Length))
             .Select(p => p.pattern));
 
         ruleIsAllowedInKeywordCache.Clear();
@@ -99,6 +98,48 @@ public partial class TmLanguageGenerator
 
         string getFullScopeNameForRule(Rule r)
             => $"{GetScopeNameForRule(r)}.{lowercaseLanguageId}";
+
+        IEnumerable<Pattern> createPatterns(Rule rule)
+        {
+            // If `rule` can span multiple lines, try to create a
+            // `{ "begin": ..., "end": ... }` TM pattern
+            // (since a normal `{ "match": ... }` pattern cannot match multiple lines)
+            HashSet<Alternative> alreadyCoveredAlts = [];
+            foreach (Alternative alt in rule.GetAlts())
+            {
+                if (AsMultilinePattern(alt) is (var begin, var body, var end))
+                {
+                    yield return new Pattern(
+                        Comment: $"rule {rule.Name}",
+                        Begin: MakeRegex(begin, parentRules: []),
+                        End: MakeRegex(end, parentRules: []),
+                        ApplyEndPatternLast: true,
+                        Name: getFullScopeNameForRule(rule)
+                    );
+                    alreadyCoveredAlts.Add(alt);
+                }
+            }
+
+            string regex = MakeRegex(rule, parentRules: [],
+                // filter out alts that are already covered by a `begin`/`end` pattern
+                altFilter: a => !alreadyCoveredAlts.Contains(a));
+            if (regex is not ("" or "()" or "(?:)"))
+            {
+                yield return new Pattern(
+                    Comment: $"rule {rule.Name}",
+                    Match: regex,
+                    Name: getFullScopeNameForRule(rule));
+            }
+        }
+    }
+
+    (SyntaxElement begin, List<SyntaxElement> body, SyntaxElement end)? AsMultilinePattern(Alternative alt)
+    {
+        if (alt.Elements is [var begin, .. var body, var end]
+                && body.Any(e => e.CanSpanMultipleLines(Grammar)))
+            return (begin, body, end);
+
+        return null;
     }
 
     // priority heuristic: the higher the number, the sooner this rule will
@@ -181,7 +222,7 @@ public partial class TmLanguageGenerator
             { IsNot: true } => false,
             TokenRef r when r.GetRuleOrNull(Grammar) is Rule rule
                 => ruleIsKeyword(rule),
-            // `(At 'foo' 'bar' | '!important)`
+            // `(At 'foo' 'bar' | '!important')`
             Block b => b.Items.WhereNotNull().All(altIsKeywordlike),
             Literal(string value)
                 => value.Any(char.IsLetter) || value.Contains('_'),
@@ -266,7 +307,8 @@ public partial class TmLanguageGenerator
     /// <summary>
     /// Returns a Oniguruma regex pattern for matching the specified lexer rule.
     /// </summary>
-    internal string MakeRegex(Rule rule, IEnumerable<Rule> parentRules)
+    internal string MakeRegex(Rule rule, IEnumerable<Rule> parentRules,
+        Func<Alternative, bool>? altFilter = null)
     {
         // first check if we're in a cycle
         if (parentRules.Contains(rule))
@@ -278,7 +320,7 @@ public partial class TmLanguageGenerator
 
         Rule? parentRule = parentRules.LastOrDefault();
         bool standalone = parentRule is null;
-        string altRegex = RegexForAltList(rule.AlternativeList, parentRules.Append(rule));
+        string altRegex = RegexForAltList(rule.AlternativeList, parentRules.Append(rule), altFilter);
         var block = $"(?{getGroupOptions()}:{altRegex})";
 
         if (standalone && RuleIsKeyword(rule))
@@ -340,14 +382,17 @@ public partial class TmLanguageGenerator
             return regex;
     }
 
-    string RegexForAltList(AlternativeList altList, IEnumerable<Rule> parentRules)
+    string RegexForAltList(AlternativeList altList, IEnumerable<Rule> parentRules,
+        Func<Alternative, bool>? altFilter = null)
     {
+        altFilter ??= _ => true;
+
         var reorderingMode = parentRules
             .Select(r => RuleSettings?.GetValueOrDefault(r.Name)?.AltReordering)
             .WhereNotNull()
             .LastOrDefault(RuleOptions.DefaultAltReorderingMode);
 
-        var alts = altList.Items.WhereNotNull();
+        var alts = altList.Items.WhereNotNull().Where(altFilter);
         bool shouldReorderAlts = reorderingMode switch {
             AltReorderingMode.ByPatternLength => true,
             AltReorderingMode.LiteralsOnly => allAltsAreLiteralsOnly(alts),

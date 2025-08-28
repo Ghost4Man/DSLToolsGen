@@ -338,7 +338,7 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
             });
         const string input = "abc **this is bold** <sometag>";
         string generatedTextMateGrammar = g.GenerateTextMateLanguageJson();
-        var tokens = TokenizeString(generatedTextMateGrammar, "source.example", input);
+        var tokens = TokenizeStringFused(generatedTextMateGrammar, "source.example", input);
         Assert.Collection(tokens,
             ExpectedToken("abc", ["variable.id.example"]),
             ExpectedToken("**this is bold**", ["markup.bold.example"]),
@@ -368,7 +368,7 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
             });
         const string input = "<script> if a: **b**";
         string generatedTextMateGrammar = g.GenerateTextMateLanguageJson();
-        var tokens = TokenizeString(generatedTextMateGrammar, "source.example", input);
+        var tokens = TokenizeStringFused(generatedTextMateGrammar, "source.example", input);
         Assert.Collection(tokens,
             ExpectedToken("<script>", ["entity.name.tag.example"]),
             ExpectedToken("if", ["keyword.control.if.example"]),
@@ -477,13 +477,108 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
             ExpectedToken(@"/\", ["other.and.example"]));
     }
 
-    Action<(string text, IReadOnlyList<string> scopes)> ExpectedToken(string text, string[] scopes) => token => {
-        Assert.Equal(text, token.text);
-        Assert.Equal(scopes, token.scopes);
+    [Fact]
+    public void given_grammar_with_lexer_rules_matching_multiple_lines_ー_matches_full_tokens()
+    {
+        (TmLanguageGenerator g, _) = GetTmLanguageGeneratorForGrammar(""""
+            lexer grammar ExampleLexer;
+            ID : [a-zA-Z]+ ;
+            DIV : '/' ;
+            CMD : '/set' | '/print' ;
+            INT : [0-9]+ ;
+            FLOAT : [0-9]+ '.' [0-9]+ ;
+            STRING : '"' ~["\r\n]* '"'
+                   | '"""' STRCHAR*? '"""'
+                   ;
+            fragment STRCHAR : ('\\' [rnt\"] | .) ;
+            RAW_STRING : '[[' .*? ']]' ;
+            // a basic block-comment rule (without support for nested comments)
+            BLOCK_COMMENT: '/*' .*? '*/' -> skip ;
+            """");
+
+        const string input = """"
+            abc /* comment 0 /*
+            x 66.0 """bbcc""" /*
+            """ */
+            y 2.0 / x """line "one"
+            line /*two*/""" 21.0 y 42 /**/
+            /print [[
+                line /*one*/
+                line "two"
+              ]] end
+            """";
+        string generatedTextMateGrammar = g.GenerateTextMateLanguageJson();
+        var tokens = TokenizeStringFused(generatedTextMateGrammar, "source.example", input);
+        Assert.Collection(tokens,
+            ExpectedToken("abc", ["variable.id.example"]),
+            ExpectedToken(""""
+                /* comment 0 /*
+                x 66.0 """bbcc""" /*
+                """ */
+                """", ["comment.block_comment.example"]),
+            ExpectedToken("y", ["variable.id.example"]),
+            ExpectedToken("2.0", ["constant.numeric.float.example"]),
+            ExpectedToken("/", ["other.div.example"]),
+            ExpectedToken("x", ["variable.id.example"]),
+            ExpectedToken(""""
+                """line "one"
+                line /*two*/"""
+                """", ["string.string.example"]),
+            ExpectedToken("21.0", ["constant.numeric.float.example"]),
+            ExpectedToken("y", ["variable.id.example"]),
+            ExpectedToken("42", ["constant.numeric.int.example"]),
+            ExpectedToken("/**/", ["comment.block_comment.example"]),
+            ExpectedToken("/print", ["keyword.cmd.example"]),
+            ExpectedToken(""""
+                [[
+                    line /*one*/
+                    line "two"
+                  ]]
+                """", ["string.raw_string.example"]),
+            ExpectedToken("end", ["variable.id.example"]));
+    }
+
+    Action<TokenInfo> ExpectedToken(string text, string[] scopes) => token => {
+        Assert.Equal(text, token.Text);
+        Assert.Equal(scopes, token.Scopes);
     };
 
+    // merges adjacent tokens with the same scopes
+    IEnumerable<TokenInfo> TokenizeStringFused(
+        string tmLanguageJson, string initialScopeName, string input)
+    {
+        TokenInfo? prevToken = null;
+
+        foreach (var token in TokenizeString(tmLanguageJson, initialScopeName, input))
+        {
+            if (prevToken is null)
+            {
+                prevToken = token;
+            }
+            else if (prevToken.Value.Scopes.SequenceEqual(token.Scopes)) // if they can be fused
+            {
+                prevToken = token with {
+                    Text = prevToken.Value.Text +
+                        (token.Line != prevToken.Value.Line ? ("\n" + token.Text) : token.Text)
+                };
+            }
+            else
+            {
+                yield return prevToken.Value;
+                prevToken = token;
+            }
+        }
+        if (prevToken is not null)
+            yield return prevToken.Value;
+    }
+
+    record struct TokenInfo(string Text, IReadOnlyList<string> Scopes, int Line)
+    {
+        public override readonly string ToString() => $"`{Text}` ({Scopes.MakeString(", ")})";
+    }
+
     // based on TextMateSharp demo code
-    IEnumerable<(string text, IReadOnlyList<string> scopes)> TokenizeString(
+    IEnumerable<TokenInfo> TokenizeString(
         string tmLanguageJson, string initialScopeName, string input)
     {
         testOutput.WriteLine("Generated TextMate grammar:");
@@ -494,7 +589,7 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
 
         IStateStack? ruleStack = null;
 
-        foreach (var line in input.Split(["\r\n", "\n"], default))
+        foreach (var (line, lineIndex) in input.Split(["\r\n", "\n"], default).Select((l, i) => (l, i)))
         {
             ITokenizeLineResult result = grammar.TokenizeLine(line, ruleStack, TimeSpan.MaxValue);
 
@@ -503,23 +598,28 @@ public class TmLanguageGeneratorTests(ITestOutputHelper testOutput)
             foreach (IToken token in result.Tokens)
             {
                 var nonDefaultScopes = token.Scopes.Except([initialScopeName]).ToList();
-                if (nonDefaultScopes.Count > 0)
-                    yield return (line[token.StartIndex..token.EndIndex], nonDefaultScopes);
+                if (nonDefaultScopes.Count is 0)
+                    continue;
+
+                int startIndex = int.Min(token.StartIndex, line.Length);
+                int endIndex = int.Min(token.EndIndex, line.Length);
+                yield return new TokenInfo(line[startIndex..endIndex], nonDefaultScopes, lineIndex);
             }
         }
     }
 
     (TmLanguageGenerator, Antlr4Ast.Grammar) GetTmLanguageGeneratorForGrammar(
-        string grammarCode, Configuration? config = null)
+        string grammarCode, Configuration? config = null,
+        Action<Diagnostic>? diagnosticHandler = null)
     {
         var grammar = Antlr4Ast.Grammar.Parse(grammarCode);
         grammar.Analyze();
         Assert.Empty(grammar.ErrorMessages);
         var generator = TmLanguageGenerator.FromConfig(
-            config ?? new(), grammar, handleDiagnostic);
+            config ?? new(), grammar, diagnosticHandler ?? defaultHandleDiagnostic);
         return (generator, grammar);
 
-        void handleDiagnostic(Diagnostic d)
+        void defaultHandleDiagnostic(Diagnostic d)
         {
             if (d.Severity == DiagnosticSeverity.Error)
                 Assert.Fail(d.ToString());

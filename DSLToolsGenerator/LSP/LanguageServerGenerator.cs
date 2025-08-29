@@ -624,7 +624,7 @@ public class LanguageServerGenerator
                 {
                     string ruleName = doc.Parser.RuleNames[ruleIndex];
 
-                    return (GetCompletionSnippetForRule(ruleName) ?? [])
+                    return (GetCompletionSnippetsForRule(ruleName) ?? [])
                         .DefaultIfEmpty((label: ruleName, snippet: "${1:" + ruleName + "}"))
                         .Select(s => new CompletionItem {
                             Label = s.label,
@@ -654,7 +654,16 @@ public class LanguageServerGenerator
                         ignoredTokens: null);
                 }
 
-                public virtual (string label, string snippet)[]? GetCompletionSnippetForRule(string ruleName) => ruleName switch {
+                public virtual IEnumerable<(string label, string snippet)>? GetCompletionSnippetsForRule(string ruleName)
+                    => GetDefaultCompletionSnippetsForRule(ruleName);
+
+                protected virtual string GetSnippetLabel(string ruleName, string? altLabel)
+                    => altLabel ?? ruleName;
+
+                protected virtual string GetSnippetPlaceholderText(string containingRule, string referencedRule, string? label)
+                    => label ?? referencedRule;
+
+                protected (string label, string snippet)[]? GetDefaultCompletionSnippetsForRule(string ruleName) => ruleName switch {
                     {{ForEach(Grammar.ParserRules, r => Output.WriteCode($""""
                         "{r.Name}" => [
                             {ForEach(r.GetAlts(), a => writeSnippetForAlt(r, a))}
@@ -670,25 +679,36 @@ public class LanguageServerGenerator
             if (makeSnippetForAlt(rule, alt) is not (string snippet and not ""))
                 return;
             Output.WriteCode($""""
-                ("{alt.ParserLabel ?? rule.Name}", """{snippet}"""),
+                (GetSnippetLabel({toCsharpLiteral(rule.Name)}, {toCsharpLiteral(alt.ParserLabel)}), $$"""{snippet}"""),
                 """");
         }
 
-        string makeSnippetForAlt(Rule rule, Alternative alt)
+        string makeSnippetForAlt(Rule containingRule, Alternative alt)
         {
             int placeholderCounter = 1;
             return string.Join(" ", alt.Elements
-                .Select(e => getSnippetTextForElement(e, ref placeholderCounter))
+                .Select(e => getSnippetTextForElement(containingRule, e, ref placeholderCounter))
                 .TakeWhile(s => s is not null));
         }
 
-        string? getSnippetTextForElement(SyntaxElement element, ref int placeholderCounter) => element switch {
+        string? getSnippetTextForElement(Rule containingRule, SyntaxElement element, ref int placeholderCounter) => element switch {
             Literal(string text) => text,
             TokenRef tr when tr.GetTokenText(Grammar) is string text => text,
+            TokenRef(string ruleName) t => $"${{{placeholderCounter++}:{
+                interpolationForPlaceholderText(containingRule, t.Name, t.Label)}}}",
+            RuleRef(string ruleName) r => $"${{{placeholderCounter++}:{
+                interpolationForPlaceholderText(containingRule, r.Name, r.Label)}}}",
             { Label: string label } => $"${{{placeholderCounter++}:{label}}}",
-            RuleRef(string ruleName) => $"${{{placeholderCounter++}:{ruleName}}}",
             _ => null,
         };
+
+        string interpolationForPlaceholderText(Rule containingRule, string ruleName, string? label) => $$$"""
+            {{GetSnippetPlaceholderText({{{toCsharpLiteral(containingRule.Name)}}}, {{{toCsharpLiteral(ruleName)}}}, {{{toCsharpLiteral(label)}}})}}
+            """;
+
+        // assumes that the identifier does not contain quotes, backslashes, control characters, ...
+        string toCsharpLiteral(string? identifier)
+            => identifier is null ? "null" : ('"' + identifier + '"');
     }
 
     public void GenerateBasicSemanticTokensHandler() => Output.WriteCode($$"""

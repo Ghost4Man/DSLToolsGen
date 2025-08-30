@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 
 using Antlr4Ast;
 
@@ -136,6 +136,8 @@ public class VscodeExtensionGenerator
         import { LanguageClient, LanguageClientOptions, ServerOptions, StreamInfo } from 'vscode-languageclient/node';
         {{(IncludeAstExplorerView ? "import { ASTProvider } from './ASTProvider';" : "")}}
 
+        const SECONDS_TO_WAIT_BEFORE_RECONNECTING = 20;
+
         let client: LanguageClient;
         let devTcpMode: boolean;
         let shouldAttemptToReconnect = true;
@@ -250,7 +252,7 @@ public class VscodeExtensionGenerator
                         client.warn(`Connection to language server was closed due to an error`, null, true);
                         if (shouldAttemptToReconnect) {
                             shouldAttemptToReconnect = false;
-                            await statusBarCountDown(10, "Attempting to reconnect");
+                            await statusBarCountDown(SECONDS_TO_WAIT_BEFORE_RECONNECTING, "Attempting to reconnect");
                             await startClient();
                             await new Promise(resolve => setTimeout(resolve, 5000));
                             shouldAttemptToReconnect = true;

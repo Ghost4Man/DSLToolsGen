@@ -67,6 +67,14 @@ generateVscodeExtensionCommand.SetHandler(w =>
         .RunGenerators(new OutputSet { VscodeExtension = true }),
     watchOption);
 
+var generateParserCommand = new Command("parser",
+    "runs ANTLR to generate a parser")
+    { watchOption };
+generateParserCommand.SetHandler(w =>
+    InitializePipeline(watchForChanges: w)
+        .RunGenerators(new OutputSet { Parser = true }),
+    watchOption);
+
 var generateConfigSchemaCommand = new Command("dtgConfigSchema",
     "generates a JSON schema of DTG configuration")
     { outputArg };
@@ -78,6 +86,7 @@ var generateCommand = new Command("generate",
         generateLanguageServerCommand,
         generateTextMateGrammarCommand,
         generateVscodeExtensionCommand,
+        generateParserCommand,
         generateConfigSchemaCommand,
     };
 generateCommand.SetHandler(() =>

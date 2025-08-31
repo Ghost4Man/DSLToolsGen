@@ -512,15 +512,43 @@ public class LanguageServerGenerator
                 .Where(l => startLine <= l.Key && l.Key <= endLine)
                 .SelectMany(l => l);
 
-            public IToken? FindTokenAt(Position position, bool preferLeftTokenAtBoundary = false)
+            public IToken? FindTokenAt(Position position,
+                bool preferLeftTokenAtBoundary = false, Func<IToken, bool>? predicate = null)
             {
-                var tokens = (BufferedTokenStream)Parser.TokenStream;
+                predicate ??= _ => true;
+
+                var tokenStream = (BufferedTokenStream)Parser.TokenStream;
+
                 // assuming that there are no holes
-                Func<IToken, bool> predicate = preferLeftTokenAtBoundary
-                    ? (t => t.GetEndPosition() >= position)
-                    : (t => t.GetEndPosition() > position);
-                IList<IToken> tokenList = tokens.GetTokens();
-                return tokenList.FirstOrDefault(predicate);
+                Func<IToken, bool> finalPredicate = preferLeftTokenAtBoundary
+                    ? (t => t.GetEndPosition() >= position && predicate(t))
+                    : (t => t.GetEndPosition() > position && predicate(t));
+                IList<IToken> tokens = tokenStream.GetTokens();
+
+                if (tokens is List<IToken> tokenList)
+                {
+                    var span = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(tokenList);
+                    int index = span.BinarySearch(new TokenPositionComparable(position));
+
+                    // When an exact match was not found, BinarySearch returns 
+                    // the bitwise complement of the next "larger" element
+                    index = index < 0 ? ~index : index;
+
+                    foreach (IToken token in span[index..])
+                    {
+                        if (finalPredicate(token))
+                            return token;
+                    }
+                    return null;
+                }
+                else
+                    return tokens.FirstOrDefault(finalPredicate);
+            }
+
+            class TokenPositionComparable(Position position) : IComparable<IToken>
+            {
+                public int CompareTo(IToken? token) => token is null ? -1 :
+                    position.CompareTo(token.GetEndPosition());
             }
         }
         """);

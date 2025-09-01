@@ -150,7 +150,9 @@ public class LanguageServerGenerator
             {
                 // parse the document using the ANTLR-generated lexer and parser
                 var stream = CharStreams.fromString(documentText);
-                var lexer = new {{LexerClassName}}(stream);
+                var lexer = new {{LexerClassName}}(stream) {
+                    TokenFactory = new LspHelperTokenFactory(CommonTokenFactory.Default)
+                };
                 var tokenStream = new CommonTokenStream(lexer);
                 var parser = new {{ParserClassName}}(tokenStream);
                 lexer.AddErrorListener(new DelegateErrorListener<int>(lexicalErrorHandler));
@@ -310,11 +312,30 @@ public class LanguageServerGenerator
                 Handler(new(recognizer, offendingSymbol, lineNumber, charPositionInLine, msg, e));
             }
         }
+
+        public record LspHelperTokenFactory(ITokenFactory Inner) : ITokenFactory
+        {
+            public IToken Create(Tuple<ITokenSource, ICharStream> source, int type, string text, int channel, int start, int stop, int line, int charPositionInLine)
+            {
+                IToken token = Inner.Create(source, type, text, channel, start, stop, line, charPositionInLine);
+                if (source.Item1 is Lexer { Line: not 0 and int stopLine, Column: not -1 and int stopColumn }
+                    && stopLine != line) // multiline token
+                {
+                    ParseTreeLspExtensions.SetEndPosition(token, stopLine, stopColumn);
+                }
+                return token;
+            }
+
+            public IToken Create(int type, string text) => Inner.Create(type, text);
+        }
         """);
 
     public void GenerateExtensionMethods() => Output.WriteCode($$"""
         public static class ParseTreeLspExtensions
         {
+            // We need to store end positions of multiline tokens since we can't (efficiently) compute them on the fly
+            static System.Runtime.CompilerServices.ConditionalWeakTable<IToken, Position> tokenEndPositions = new();
+
             public static Range GetRange(this ParserRuleContext context)
                 => context.SourceInterval.Length is 0 // if there are no tokens (or only missing tokens)
                     ? new Range(context.Start.GetStartPosition(), context.Start.GetStartPosition())
@@ -329,10 +350,25 @@ public class LanguageServerGenerator
             public static Position GetStartPosition(this IToken token)
                 => new Position(token.Line - 1, token.Column);
 
+            /// <summary>
+            /// Returns the end position of this token.
+            /// <para>For multiline tokens, this relies on <see cref="SetEndPosition"/>
+            /// having been called before, e.g. by setting <c>new LspHelperTokenFactory(CommonTokenFactory.Default)</c> as
+            /// the lexer's <see cref="Lexer.TokenFactory"/>. (This is done automatically in the generated language server code).
+            /// </para>
+            /// </summary>
             public static Position GetEndPosition(this IToken token)
             {
-                // known issue: can't get end position of multi-line tokens (comments, strings, etc.)
+                if (tokenEndPositions.TryGetValue(token, out Position? position))
+                    return position;
+
                 return new Position(token.Line - 1, token.Column + token.Text.Length);
+            }
+
+            internal static void SetEndPosition(IToken token, int lineNumber, int columnIndex)
+            {
+                tokenEndPositions.AddOrUpdate(token,
+                    new Position(lineNumber - 1, columnIndex));
             }
         }
 

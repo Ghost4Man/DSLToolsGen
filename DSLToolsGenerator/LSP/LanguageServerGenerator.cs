@@ -599,7 +599,7 @@ public class LanguageServerGenerator
             public required DocumentUri Uri { get; init; }
 
             /// <summary>
-            /// (Optional) The version number of the document the diagnostics are published for.
+            /// (Optional) The version number of the document the AST information is published for.
             /// </summary>
             [Optional]
             public int? Version { get; init; }

@@ -237,14 +237,22 @@ async Task<int> GenerateTextMateGrammar(
     return 0;
 }
 
-Task<int> GenerateVscodeExtension(Grammar grammar, Configuration config)
+async Task<int> GenerateVscodeExtension(Grammar grammar, Configuration config)
 {
+    string workspaceRootDirectory = Directory.GetCurrentDirectory();
+
+    string languageServerAssemblyName =
+        config.LanguageServer.ProjectPath is null ? "LanguageServer" :
+        await GetProjectAssemblyName(config.LanguageServer.ProjectPath, workspaceRootDirectory);
+
     var generator = VscodeExtensionGenerator.FromConfig(grammar,
         diagnosticHandler: Console.Error.WriteLine,
+        workspaceRootDirectory,
+        languageServerAssemblyName,
         config);
 
     if (generator is null)
-        return Task.FromResult(1); // we assume an error has been reported by FromConfig
+        return 1; // we assume an error has been reported by FromConfig
 
     generator.GenerateExtension(file => {
         if (TryOpenWrite(file, overwrite: true, out FileStream? fileStream))
@@ -252,7 +260,76 @@ Task<int> GenerateVscodeExtension(Grammar grammar, Configuration config)
         return null;
     });
 
-    return Task.FromResult(0);
+    return 0;
+}
+
+async Task<string> GetProjectAssemblyName(string projectPath, string workspaceRootDirectory)
+{
+    Console.Error.Write(AnsiColors.Gray +
+        $"Getting AssemblyName for project '{projectPath}' (using the dotnet CLI)... " +
+        AnsiColors.Default);
+
+    if ((await TryGetProcessOutput(
+        "dotnet", ["msbuild", projectPath, "-noLogo", "-getProperty:AssemblyName"]))
+        is (string output, exitCode: 0))
+    {
+        Console.Error.WriteLine(AnsiColors.Gray + "done." + AnsiColors.Default);
+        return output.Trim();
+    }
+    else
+    {
+        // fallback: use the project directory/file name (without extension)
+        // e.g. "Abc.LS.csproj" -> "Abc.LS"
+        //      "./Abc.LS" -> "Abc.LS"
+        //      "./" -> "FooBar" (name of the workspace root directory)
+        return Path.GetFileName(Path.GetFullPath(
+                Path.TrimEndingDirectorySeparator(projectPath),
+                basePath: workspaceRootDirectory))
+            .TrimSuffix(".csproj");
+    }
+}
+
+async Task<(string output, int exitCode)?> TryGetProcessOutput(string command, string[] args)
+{
+    try
+    {
+        var process = Process.Start(new ProcessStartInfo(command, args) {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        });
+
+        if (process is null)
+            return null;
+
+        string standardOutput = process.StandardOutput.ReadToEnd();
+        string standardError = process.StandardError.ReadToEnd();
+        var cts = new CancellationTokenSource(5000); // 5 second timeout
+        await process.WaitForExitAsync(cts.Token);
+
+        if (process is { HasExited: false })
+        {
+            process.Kill(entireProcessTree: true);
+            Console.Error.WriteLine($"Warning: command timed out after 5 seconds: `{command} {string.Join(" ", args)}`");
+            return null;
+        }
+
+        if (process is { ExitCode: not 0 })
+        {
+            Console.Error.WriteLine($"Warning: command returned with exit code {process.ExitCode}: `{command} {string.Join(" ", args)}`:");
+            Console.Error.Write("stderr:\n  ");
+            Console.Error.WriteLine(standardError.ReplaceLineEndings("\n  ").TrimEnd());
+            Console.Error.Write("stdout:\n  ");
+            Console.Error.WriteLine(standardOutput.ReplaceLineEndings("\n  ").TrimEnd());
+        }
+        return (standardOutput, process.ExitCode);
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Warning: failed to start process `{command} {string.Join(" ", args)}`: " +
+            $"{ex.GetType().Name}: {ex.Message}");
+        return null;
+    }
 }
 
 async Task<int> RunAntlr(Grammar grammar, Configuration config, string command, string outputDirectory)
@@ -399,7 +476,6 @@ async Task<int> GenerateConfigFile(FileInfo outputFile)
     var generator = new ConfigFileGenerator {
         // TODO: attempt to automatically discover the values or ask the user
         LanguageId = new("abc"),
-        CsprojName = null,
         GrammarFile = null,
     };
     string contents = generator.Generate();

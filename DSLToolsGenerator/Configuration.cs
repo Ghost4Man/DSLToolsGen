@@ -35,13 +35,6 @@ namespace DSLToolsGenerator
         public string[]? LanguageFileExtensions { get; init; }
 
         /// <summary>
-        /// Bare name (without file extension) of the C# project file
-        /// (from the root directory of the workspace)
-        /// that contains the language server code.
-        /// </summary>
-        public HyphenDotIdentifierString? CsprojName { get; init; }
-
-        /// <summary>
         /// Specifies which generators to run automatically
         /// on <c>dtg generate</c> or <c>dtg watch</c>.
         /// </summary>
@@ -286,6 +279,12 @@ namespace DSLToolsGenerator.LanguageServer
 
         public IdentifierString GetFallbackLanguageServerClassName(string languageId)
             => new(languageId.Pascalize() + "LanguageServer");
+
+        /// <summary>
+        /// Path to the C# project containing the language server implementation,
+        /// e.g. <c>"."</c> or <c>"./FooLS.csproj"</c>.
+        /// </summary>
+        public string? ProjectPath { get; init; }
     }
 }
 

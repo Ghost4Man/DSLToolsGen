@@ -116,7 +116,6 @@ It it still looks wrong, open the TextMate Scope Inspector in VSCode and look at
 ```jsonc
 {
     "$schema": "dtg.schema.json",
-    "CsprojName": "AvroIDL",
     "GrammarFile": "AvroIDL.g4",
     "Outputs": {
         "AST": true,
@@ -132,6 +131,7 @@ It it still looks wrong, open the TextMate Scope Inspector in VSCode and look at
     },
     "LanguageServer": {
         "OutputPath": "LanguageServer.g.cs",
+        "ProjectPath": "AvroIDL.csproj",
         "Namespace": "AvroIDL.LanguageServer",
     },
     "Parser": {

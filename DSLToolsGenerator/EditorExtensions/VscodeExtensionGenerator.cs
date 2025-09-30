@@ -10,7 +10,8 @@ public class VscodeExtensionGenerator
     public required string LanguageDisplayName { get; init; }
     public required string[] LanguageFileExtensions { get; init; }
     public required string CommandCategoryName { get; init; }
-    public required HyphenDotIdentifierString CsprojName { get; init; }
+    public required string LanguageServerProjectPath { get; init; }
+    public required string LanguageServerAssemblyName { get; init; }
     public required string ExtensionDisplayName { get; init; }
     public required HyphenDotIdentifierString ExtensionId { get; init; }
     public required string LanguageClientName { get; init; }
@@ -152,7 +153,8 @@ public class VscodeExtensionGenerator
             if (!languageServerCommand) {
                 // use the `dotnet LanguageServer.dll` way to launch the language server
                 // since it's cross-platform (unlike using the `.exe` and ELF wrappers)
-                const languageServerDllPath = context.asAbsolutePath("LanguageServer/dtg-test.dll");
+                const languageServerDllPath = context.asAbsolutePath({{
+                    AsJson($"LanguageServer/{LanguageServerAssemblyName}.dll")}});
                 languageServerCommand = "dotnet";
                 languageServerArgs.unshift(languageServerDllPath, "--");
             }
@@ -489,7 +491,7 @@ public class VscodeExtensionGenerator
                 """ : "")}}
           },
           "scripts": {
-            "vscode:prepublish": "npm run compile && dotnet publish ../{{CsprojName}}.csproj -o ./LanguageServer",
+            "vscode:prepublish": "npm run compile && dotnet publish {{LanguageServerProjectPath}} -o ./LanguageServer",
             "compile": "tsc -b",
             "watch": "tsc -b -w"
           },
@@ -565,13 +567,27 @@ public class VscodeExtensionGenerator
     static string AsJson(object obj) => JsonSerializer.Serialize(obj);
 
     public static VscodeExtensionGenerator? FromConfig(
-        Grammar grammar, Action<Diagnostic> diagnosticHandler, Configuration config)
+        Grammar grammar,
+        Action<Diagnostic> diagnosticHandler,
+        string workspaceRootDirectory,
+        string languageServerAssemblyName,
+        Configuration config)
     {
-        if (!Configuration.CheckValuePresent(config.VscodeExtension, out _, diagnosticHandler)
-            || !Configuration.CheckValuePresent(config.CsprojName, out _, diagnosticHandler))
+        if (!Configuration.CheckValuePresent(config.VscodeExtension, out _, diagnosticHandler))
+            return null;
+
+        if (!Configuration.CheckValuePresent(config.LanguageServer.ProjectPath, out _, diagnosticHandler))
             return null;
 
         var languageId = config.LanguageId ?? config.GetFallbackLanguageId(grammar);
+
+        // The configuration paths are relative to workspace root (where the config file is located)
+        // but we need the language server path relative to the extension directory
+        string languageServerProjectPathFromExtensionDir =
+            Path.GetRelativePath(
+                Path.GetFullPath(config.VscodeExtension.OutputDirectory, workspaceRootDirectory),
+                Path.GetFullPath(config.LanguageServer.ProjectPath, workspaceRootDirectory))
+            .Replace(Path.DirectorySeparatorChar, '/'); // use '/' in JSON files
 
         return new VscodeExtensionGenerator {
             LanguageId = languageId.Transform(s => s.ToLowerInvariant()),
@@ -584,7 +600,8 @@ public class VscodeExtensionGenerator
             CommandCategoryName = config.VscodeExtension.ExtensionDisplayName,
             IncludeAstExplorerView = config.VscodeExtension.IncludeAstExplorerView,
             OutputDirectory = config.VscodeExtension.OutputDirectory,
-            CsprojName = config.CsprojName,
+            LanguageServerProjectPath = languageServerProjectPathFromExtensionDir,
+            LanguageServerAssemblyName = languageServerAssemblyName,
         };
     }
 }

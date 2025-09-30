@@ -5,7 +5,6 @@ namespace DSLToolsGenerator;
 public class ConfigFileGenerator
 {
     public required HyphenDotIdentifierString LanguageId { get; set; }
-    public required string? CsprojName { get; set; }
     public required string? GrammarFile { get; set; }
 
     public string Generate()
@@ -22,7 +21,6 @@ public class ConfigFileGenerator
             // TODO: replace all of the configuration values as appropriate for your language
             // TIP:  use code completion to discover available configuration options
 
-            "CsprojName": {{AsJson(CsprojName ?? LanguageId)}},
             "GrammarFile": {{AsJson(GrammarFile ?? $"{LanguageId}.g4")}},
             "LanguageFileExtensions": [".abc"],
 
@@ -41,6 +39,7 @@ public class ConfigFileGenerator
             },
             "LanguageServer": {
               "OutputPath": "LanguageServer.g.cs",
+              "ProjectPath": "Abc.csproj",
               "Namespace": "{{languageNamePascalCase}}.LanguageServer"
             },
             "Parser": {

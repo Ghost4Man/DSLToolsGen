@@ -1,4 +1,4 @@
-﻿using System.Reactive.Linq;
+using System.Reactive.Linq;
 using Antlr4Ast;
 
 namespace DSLToolsGenerator;

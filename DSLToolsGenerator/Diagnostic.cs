@@ -1,4 +1,4 @@
-﻿namespace DSLToolsGenerator;
+namespace DSLToolsGenerator;
 
 public record Diagnostic(DiagnosticSeverity Severity, string Message)
 {

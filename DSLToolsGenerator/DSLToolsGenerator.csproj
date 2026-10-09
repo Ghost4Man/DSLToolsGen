@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <AssemblyName>DSLToolsGen</AssemblyName>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -12,6 +13,20 @@
       and CS1573 "Parameter [...] has no matching param tag in the XML comment for [...] (but others do)"
     -->
     <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
+  </PropertyGroup>
+  
+  <PropertyGroup>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>dtg</ToolCommandName>
+    <PackageOutputPath>./nupkg</PackageOutputPath>
+    <RollForward>Major</RollForward>
+  </PropertyGroup>
+  
+  <PropertyGroup>
+    <Authors>Ghost4Man</Authors>
+    <Description>Tool that generates editor support and an AST definition (as C# code) for a DSL (from an ANTLR grammar)</Description>
+    <PackageProjectUrl>https://dtg.akodas.com/</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Ghost4Man/DSLToolsGen</RepositoryUrl>
   </PropertyGroup>
 
   <ItemGroup>

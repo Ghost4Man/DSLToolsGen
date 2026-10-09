@@ -13,15 +13,16 @@ This is a project aimed at simplifying the development of domain-specific langua
 - **VSCode Extension** – generates a ready-to-run VSCode extension that uses the generated TextMate grammar for syntax highlighting and provides integration with the language server.
     - includes an AST Explorer tree view (optional)
 
+## Install
+
+DTG is available as a dotnet tool.
+You can install it using `dotnet tool install --global DSLToolsGen` (or as a
+[local tool](https://andrewlock.net/using-and-authoring-dotnet-tools/#working-with-local-tools))
+and then run it as `dtg`.
+
+Alternatively, run it directly without installation using `dnx DSLToolsGen --`.
+
 ## Usage
-
-Build with `dotnet build` (requires .NET 8 SDK).  
-```bash
-cd DSLToolsGenerator
-dotnet build
-```
-
-Run with `dotnet run -- <args>`, or create a `dtg` alias to the executable (recommended):
 
 - `dtg init` to create a `dtg.json` config file
 - `dtg generate` to run the configured generators once
@@ -155,6 +156,16 @@ It it still looks wrong, open the TextMate Scope Inspector in VSCode and look at
     },
 }
 ```
+
+## Build
+
+Build with `dotnet build` (requires .NET 8+ SDK).  
+```bash
+cd DSLToolsGenerator
+dotnet build
+```
+
+Run with `dotnet run -- <args>`, or create a `dtg` alias to the executable (recommended):
 
 ## Dependencies
 
